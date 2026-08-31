@@ -1,0 +1,406 @@
+// Maintenance Management — Prisma schema
+// Models the fixed spine Platform → Company → Client, then a self-referencing
+// Zone tree, devices, the issue state machine, daily status logs, and technicians.
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  super_admin
+  company_admin
+  client_admin
+  zone_incharge
+  zone_staff
+  technician
+}
+
+enum CompanyStatus {
+  active
+  inactive
+}
+
+enum AccountStatus {
+  invited
+  active
+  suspended
+  removed
+}
+
+enum ZoneStatus {
+  draft
+  active
+  inactive
+}
+
+enum ZoneAssignmentRole {
+  incharge
+  staff
+}
+
+enum DeviceStatus {
+  provisioned
+  active
+  under_maintenance
+  faulty
+  retired
+}
+
+enum IssuePriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum IssueStatus {
+  open
+  assigned
+  in_progress
+  on_hold
+  resolved
+  closed
+  reopened
+}
+
+enum DailyStatus {
+  working
+  not_working
+  needs_attention
+}
+
+// ---------------------------------------------------------------------------
+// Hierarchy: Company → Client → Zone (self-referencing tree)
+// ---------------------------------------------------------------------------
+
+model Company {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String        @db.VarChar(160)
+  status    CompanyStatus @default(active)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  clients Client[]
+  users   User[]
+
+  @@map("companies")
+}
+
+model Client {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String   @db.VarChar(160)
+  type      String?  @db.VarChar(60)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  zones                 Zone[]
+  users                 User[]
+  technicianAssignments TechnicianAssignment[]
+  clientVerticals       ClientVertical[]
+
+  @@index([companyId])
+  @@map("clients")
+}
+
+// Verticals a client can have switched on (e.g. hardware/CCTV). Modeled as a
+// feature toggle per the frontend contract (`PATCH /client-verticals`).
+model Vertical {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(60)
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  clientVerticals ClientVertical[]
+
+  @@map("verticals")
+}
+
+model ClientVertical {
+  id         String   @id @default(uuid()) @db.Uuid
+  clientId   String   @map("client_id") @db.Uuid
+  verticalId String   @map("vertical_id") @db.Uuid
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, verticalId])
+  @@map("client_verticals")
+}
+
+model Zone {
+  id           String     @id @default(uuid()) @db.Uuid
+  clientId     String     @map("client_id") @db.Uuid
+  parentZoneId String?    @map("parent_zone_id") @db.Uuid
+  name         String     @db.VarChar(120)
+  status       ZoneStatus @default(draft)
+  createdById  String     @map("created_by") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  client                Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  parent                Zone?                  @relation("ZoneHierarchy", fields: [parentZoneId], references: [id], onDelete: Restrict)
+  children              Zone[]                 @relation("ZoneHierarchy")
+  createdBy             User                   @relation("ZoneCreatedBy", fields: [createdById], references: [id])
+  assignments           ZoneAssignment[]
+  devices               Device[]
+  technicianAssignments TechnicianAssignment[]
+
+  @@index([clientId, parentZoneId])
+  @@map("zones")
+}
+
+model ZoneAssignment {
+  id           String             @id @default(uuid()) @db.Uuid
+  zoneId       String             @map("zone_id") @db.Uuid
+  userId       String             @map("user_id") @db.Uuid
+  role         ZoneAssignmentRole
+  assignedAt   DateTime           @default(now()) @map("assigned_at")
+  unassignedAt DateTime?          @map("unassigned_at")
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // NOTE: enforce "one active assignment per (zone, user, role)" with a PARTIAL
+  // unique index — add it in the migration SQL, Prisma can't express the
+  // `WHERE unassigned_at IS NULL` predicate in-schema:
+  //   CREATE UNIQUE INDEX zone_assignments_active_unique
+  //     ON zone_assignments (zone_id, user_id, role)
+  //     WHERE unassigned_at IS NULL;
+  @@index([zoneId])
+  @@index([userId])
+  @@map("zone_assignments")
+}
+
+// ---------------------------------------------------------------------------
+// Device catalogue
+// ---------------------------------------------------------------------------
+
+model HardwareType {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String   @unique @db.VarChar(80)
+  specFields Json     @map("spec_fields")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  devices         Device[]
+  issueCategories IssueCategory[]
+
+  @@map("hardware_types")
+}
+
+model Device {
+  id             String       @id @default(uuid()) @db.Uuid
+  zoneId         String       @map("zone_id") @db.Uuid
+  hardwareTypeId String?      @map("hardware_type_id") @db.Uuid
+  name           String       @db.VarChar(120)
+  location       String?      @db.VarChar(200)
+  installDate    DateTime?    @map("install_date") @db.Date
+  status         DeviceStatus @default(provisioned)
+  isManualEntry  Boolean      @default(false) @map("is_manual_entry")
+  customSpec     Json?        @map("custom_spec")
+  addedById      String       @map("added_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  zone            Zone             @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  hardwareType    HardwareType?    @relation(fields: [hardwareTypeId], references: [id], onDelete: SetNull)
+  addedBy         User             @relation("DeviceAddedBy", fields: [addedById], references: [id])
+  issues          Issue[]
+  dailyStatusLogs DailyStatusLog[]
+
+  @@index([zoneId, status])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Issue management (core state machine)
+// ---------------------------------------------------------------------------
+
+model IssueCategory {
+  id             String @id @default(uuid()) @db.Uuid
+  hardwareTypeId String @map("hardware_type_id") @db.Uuid
+  name           String @db.VarChar(100)
+
+  hardwareType HardwareType @relation(fields: [hardwareTypeId], references: [id], onDelete: Cascade)
+  issues       Issue[]
+
+  @@index([hardwareTypeId])
+  @@map("issue_categories")
+}
+
+model Issue {
+  id                   String        @id @default(uuid()) @db.Uuid
+  deviceId             String        @map("device_id") @db.Uuid
+  categoryId           String        @map("category_id") @db.Uuid
+  raisedByUserId       String        @map("raised_by_user_id") @db.Uuid
+  assignedTechnicianId String?       @map("assigned_technician_id") @db.Uuid
+  priority             IssuePriority @default(medium)
+  status               IssueStatus   @default(open)
+  description          String        @db.Text
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  resolvedAt           DateTime?     @map("resolved_at")
+  closedAt             DateTime?     @map("closed_at")
+
+  device             Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  category           IssueCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  raisedBy           User                 @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id])
+  assignedTechnician Technician?          @relation(fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
+  statusHistory      IssueStatusHistory[]
+
+  @@index([status, assignedTechnicianId])
+  @@index([deviceId, status])
+  @@map("issues")
+}
+
+model IssueStatusHistory {
+  id              String       @id @default(uuid()) @db.Uuid
+  issueId         String       @map("issue_id") @db.Uuid
+  fromStatus      IssueStatus? @map("from_status")
+  toStatus        IssueStatus  @map("to_status")
+  changedByUserId String       @map("changed_by_user_id") @db.Uuid
+  changedAt       DateTime     @default(now()) @map("changed_at")
+  notes           String?      @db.Text
+
+  issue     Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  changedBy User  @relation("IssueStatusChangedBy", fields: [changedByUserId], references: [id])
+
+  @@index([issueId])
+  @@map("issue_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// Daily status log (one snapshot per device per day)
+// ---------------------------------------------------------------------------
+
+model DailyStatusLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  deviceId       String      @map("device_id") @db.Uuid
+  loggedByUserId String      @map("logged_by_user_id") @db.Uuid
+  status         DailyStatus
+  logDate        DateTime    @map("log_date") @db.Date
+  notes          String?     @db.Text
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  loggedBy User   @relation("DailyLogLoggedBy", fields: [loggedByUserId], references: [id])
+
+  @@unique([deviceId, logDate])
+  @@map("daily_status_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Technician coverage
+// ---------------------------------------------------------------------------
+
+model Technician {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  specialization String?  @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments TechnicianAssignment[]
+  issues      Issue[]
+
+  @@map("technicians")
+}
+
+model TechnicianAssignment {
+  id           String  @id @default(uuid()) @db.Uuid
+  technicianId String  @map("technician_id") @db.Uuid
+  clientId     String? @map("client_id") @db.Uuid
+  zoneId       String? @map("zone_id") @db.Uuid
+
+  technician Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  client     Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  zone       Zone?      @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  // NOTE: enforce "at least one of client_id / zone_id is set" with a CHECK
+  // constraint added in the migration SQL:
+  //   ALTER TABLE technician_assignments
+  //     ADD CONSTRAINT technician_assignment_scope
+  //     CHECK (client_id IS NOT NULL OR zone_id IS NOT NULL);
+  @@index([technicianId])
+  @@index([clientId])
+  @@index([zoneId])
+  @@map("technician_assignments")
+}
+
+// ---------------------------------------------------------------------------
+// Users (shared platform-wide)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String        @id @default(uuid()) @db.Uuid
+  companyId     String?       @map("company_id") @db.Uuid
+  clientId      String?       @map("client_id") @db.Uuid
+  name          String        @db.VarChar(120)
+  email         String        @unique @db.VarChar(200)
+  passwordHash  String?       @map("password_hash") @db.VarChar(255)
+  role          UserRole
+  accountStatus AccountStatus @default(invited) @map("account_status")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  technicianProfile  Technician?
+  createdZones       Zone[]               @relation("ZoneCreatedBy")
+  zoneAssignments    ZoneAssignment[]
+  addedDevices       Device[]             @relation("DeviceAddedBy")
+  raisedIssues       Issue[]              @relation("IssueRaisedBy")
+  issueStatusChanges IssueStatusHistory[] @relation("IssueStatusChangedBy")
+  dailyStatusLogs    DailyStatusLog[]     @relation("DailyLogLoggedBy")
+  refreshTokens      RefreshToken[]
+  deviceTokens       DeviceToken[]
+
+  @@index([companyId])
+  @@index([clientId])
+  @@map("users")
+}
+
+// Hashed refresh tokens for rotation/revocation (the raw token is never stored).
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// FCM/APNs device registrations for push (POST /auth/device-token).
+model DeviceToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(512)
+  platform  String   @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
+}
