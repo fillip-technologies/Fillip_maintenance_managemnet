@@ -39,7 +39,7 @@ clientVerticalRouter.get(
 
 clientVerticalRouter.patch(
   '/',
-  requireRole('super_admin', 'company_admin'),
+  requireRole('super_admin'),
   validate(
     z.object({
       body: z.object({

@@ -82,6 +82,30 @@ async function main() {
   const ownClient = await req('GET', `/dashboard/summary?scope=client&id=${client2.id}`, { token: admin2 });
   check('client_admin2 dashboard of own client → 200', ownClient.status === 200, `got ${ownClient.status}`);
 
+  // --- Technician issue visibility: assigned-to-me OR unassigned-in-coverage ---
+  console.log('\n== Technician issue visibility ==');
+  const amit = await login('amit@example.com'); // seeded: covers City Zoo client-wide
+  const techList = (await req('GET', '/technicians', { token: su })).json.data.items;
+  const amitTech = techList.find((t) => t.user?.name === 'Amit Shah');
+  const otherTech = techList.find((t) => t.user?.name !== 'Amit Shah');
+
+  const mkIssue = async () =>
+    (await req('POST', '/issues', {
+      token: su,
+      body: { deviceId: device1.id, categoryId: cat1.id, priority: 'high', description: 'tech-vis probe' },
+    })).json.data;
+  const openIssue = await mkIssue(); // unassigned, in amit's coverage
+  const mineIssue = await mkIssue();
+  await req('PATCH', `/issues/${mineIssue.id}/assign`, { token: su, body: { technicianId: amitTech.id } });
+  const otherIssue = await mkIssue();
+  await req('PATCH', `/issues/${otherIssue.id}/assign`, { token: su, body: { technicianId: otherTech.id } });
+
+  const amitIssues = (await req('GET', '/issues?limit=100', { token: amit })).json.data.items;
+  const amitIds = new Set(amitIssues.map((i) => i.id));
+  check('technician sees UNASSIGNED issue in coverage', amitIds.has(openIssue.id));
+  check('technician sees issue ASSIGNED to them', amitIds.has(mineIssue.id));
+  check('technician does NOT see issue assigned to another technician', !amitIds.has(otherIssue.id), `leaked ${otherIssue.id}`);
+
   // --- Intra-client zone isolation (same client, different zones) ---
   console.log('\n== Intra-client zone isolation (zone_staff) ==');
   const zoneX = (await req('POST', '/zones', { token: admin1, body: { clientId: client1.id, name: `X ${uniq}` } })).json.data;
@@ -102,6 +126,15 @@ async function main() {
   check('zone_staff GET sibling-zone device by id → 404', staffGetY.status === 404, `got ${staffGetY.status}`);
   const staffLogY = await req('POST', '/daily-logs', { token: staff, body: { deviceId: devY.id, status: 'working' } });
   check('zone_staff log on sibling-zone device → 403', staffLogY.status === 403, `got ${staffLogY.status}`);
+
+  // --- Cascade: staff on a PARENT zone sees devices in its CHILD zones ---
+  console.log('\n== Cascading visibility (zone_staff → sub-zones) ==');
+  const childZone = (await req('POST', '/zones', { token: admin1, body: { clientId: client1.id, name: `X-Child ${uniq}`, parentZoneId: zoneX.id } })).json.data;
+  const devChild = (await req('POST', '/devices', { token: admin1, body: { zoneId: childZone.id, hardwareTypeId: hw1.id, name: `DevXChild ${uniq}` } })).json.data;
+  const staffAfter = await req('GET', '/devices', { token: staff });
+  check('zone_staff (parent zone X) SEES child-zone device (cascade)', staffAfter.json.data.items.some((d) => d.id === devChild.id));
+  const staffGetChild = await req('GET', `/devices/${devChild.id}`, { token: staff });
+  check('zone_staff GET child-zone device by id → 200 (cascade)', staffGetChild.status === 200, `got ${staffGetChild.status}`);
 
   console.log(`\n===== ${pass} passed, ${fail} failed =====`);
   process.exit(fail ? 1 : 0);

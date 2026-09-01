@@ -3,7 +3,7 @@ import { verifyAccessToken } from '../utils/jwt.js';
 
 /**
  * Requires a valid Bearer access token. Populates `req.user` with the token's
- * identity + scope claims: `{ id, role, companyId, clientId, technicianId }`.
+ * identity + scope claims: `{ id, role, clientId, technicianId }`.
  */
 export function authenticate(req, _res, next) {
   const header = req.headers.authorization ?? '';
@@ -16,7 +16,6 @@ export function authenticate(req, _res, next) {
     req.user = {
       id: claims.sub,
       role: claims.role,
-      companyId: claims.companyId ?? null,
       clientId: claims.clientId ?? null,
       technicianId: claims.technicianId ?? null,
     };

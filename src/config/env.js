@@ -30,11 +30,8 @@ const envSchema = z.object({
   AUTO_CLOSE_DAYS: z.coerce.number().int().positive().default(3),
   // Consecutive `not_working` daily logs before a device auto-flags `faulty`.
   FAULTY_THRESHOLD: z.coerce.number().int().positive().default(3),
-  // If true, a parent zone's incharge can see its sub-zones' devices/issues.
-  CASCADING_VISIBILITY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
+  // Cascading visibility (an incharge/staff seeing their sub-zones) is always on
+  // by design — it is not configurable.
   // If true, a zone incharge may reassign a technician; otherwise admin-only.
   INCHARGE_CAN_REASSIGN: z
     .enum(['true', 'false'])

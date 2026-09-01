@@ -15,17 +15,15 @@ const publicSelect = {
   name: true,
   role: true,
   accountStatus: true,
-  companyId: true,
   clientId: true,
   createdAt: true,
   updatedAt: true,
 };
 
 export const userService = {
-  async list({ page, limit, search, clientId, companyId, role }, scope) {
+  async list({ page, limit, search, clientId, role }, scope) {
     const filters = {
       ...(clientId ? { clientId } : {}),
-      ...(companyId ? { companyId } : {}),
       ...(role ? { role } : {}),
       ...(search
         ? {

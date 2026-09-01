@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 const userRole = z.enum([
   'super_admin',
-  'company_admin',
   'client_admin',
   'zone_incharge',
   'zone_staff',
@@ -21,7 +20,6 @@ export const listUsersSchema = z.object({
     limit: z.coerce.number().int().positive().max(100).default(20),
     search: z.string().trim().min(1).optional(),
     clientId: z.string().uuid().optional(),
-    companyId: z.string().uuid().optional(),
     role: userRole.optional(),
   }),
 });
@@ -36,7 +34,6 @@ export const createUserSchema = z.object({
     name: z.string().trim().min(1).max(120),
     role: userRole,
     password: z.string().min(8).max(128).optional(),
-    companyId: z.string().uuid().optional(),
     clientId: z.string().uuid().optional(),
     accountStatus: accountStatus.optional(),
   }),
@@ -50,7 +47,6 @@ export const updateUserSchema = z.object({
       name: z.string().trim().min(1).max(120).optional(),
       role: userRole.optional(),
       accountStatus: accountStatus.optional(),
-      companyId: z.string().uuid().nullable().optional(),
       clientId: z.string().uuid().nullable().optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {

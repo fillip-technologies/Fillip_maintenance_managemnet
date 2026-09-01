@@ -2,7 +2,7 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('super_admin', 'company_admin', 'client_admin', 'zone_incharge', 'zone_staff', 'technician');
+CREATE TYPE "UserRole" AS ENUM ('super_admin', 'client_admin', 'zone_incharge', 'zone_staff', 'technician');
 
 -- CreateEnum
 CREATE TYPE "CompanyStatus" AS ENUM ('active', 'inactive');
@@ -203,7 +203,6 @@ CREATE TABLE "technician_assignments" (
 -- CreateTable
 CREATE TABLE "users" (
     "id" UUID NOT NULL,
-    "company_id" UUID,
     "client_id" UUID,
     "name" VARCHAR(120) NOT NULL,
     "email" VARCHAR(200) NOT NULL,
@@ -295,8 +294,6 @@ CREATE INDEX "technician_assignments_zone_id_idx" ON "technician_assignments"("z
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
-CREATE INDEX "users_company_id_idx" ON "users"("company_id");
-
 -- CreateIndex
 CREATE INDEX "users_client_id_idx" ON "users"("client_id");
 
@@ -385,7 +382,6 @@ ALTER TABLE "technician_assignments" ADD CONSTRAINT "technician_assignments_clie
 ALTER TABLE "technician_assignments" ADD CONSTRAINT "technician_assignments_zone_id_fkey" FOREIGN KEY ("zone_id") REFERENCES "zones"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "users" ADD CONSTRAINT "users_company_id_fkey" FOREIGN KEY ("company_id") REFERENCES "companies"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "users_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;

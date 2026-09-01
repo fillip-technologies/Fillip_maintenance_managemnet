@@ -13,7 +13,7 @@ import {
 export const deviceRouter = Router();
 
 // Managing the device catalogue is an admin action; zone users read + log/raise.
-const canManage = requireRole('super_admin', 'company_admin', 'client_admin');
+const canManage = requireRole('super_admin', 'client_admin');
 
 // Note: devices are never hard-deleted — retire them via PATCH /:id/status.
 deviceRouter.get('/', validate(listDevicesSchema), deviceController.list);

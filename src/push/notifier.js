@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma.js';
-import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { domainEvents } from '../realtime/events.js';
 import { zoneService } from '../modules/zones/zone.service.js';
@@ -23,14 +22,11 @@ async function resolveAudience({ db, ancestorsOf }, audience, issue) {
     case AUDIENCE.ZONE_INCHARGE: {
       const zoneId = issue.device?.zoneId;
       if (!zoneId) return [];
-      // Notify the incharge of the device's OWN zone. Ancestor incharges are
-      // only reached when CASCADING_VISIBILITY is on — otherwise a parent-zone
-      // incharge would get a push about an issue they can't open over HTTP.
-      let zoneIds = [zoneId];
-      if (env.CASCADING_VISIBILITY) {
-        const ancestors = await ancestorsOf(zoneId);
-        zoneIds = ancestors.map((a) => a.id);
-      }
+      // Notify the incharge of the device's own zone AND every ancestor zone —
+      // a parent-zone incharge's scope cascades down into this sub-zone, so the
+      // push matches what they can see over HTTP.
+      const ancestors = await ancestorsOf(zoneId);
+      const zoneIds = ancestors.map((a) => a.id);
       const rows = await db.zoneAssignment.findMany({
         where: { zoneId: { in: zoneIds }, role: 'incharge', unassignedAt: null },
         select: { userId: true },

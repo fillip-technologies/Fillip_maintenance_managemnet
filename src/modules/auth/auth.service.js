@@ -13,7 +13,6 @@ function accessClaims(user, technicianId) {
   return {
     sub: user.id,
     role: user.role,
-    companyId: user.companyId,
     clientId: user.clientId,
     technicianId: technicianId ?? null,
   };

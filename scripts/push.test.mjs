@@ -115,28 +115,28 @@ test('created selects zone-incharge (own zone) + client-admin tokens', async () 
       deleteMany: async () => ({ count: 0 }),
     },
   };
-  // ancestorsOf must NOT be consulted when cascading is off (default env).
+  // Cascading is always on: incharge resolution expands to zone + ancestors.
   let ancestorsCalled = false;
-  const ancestorsOf = async () => { ancestorsCalled = true; return []; };
+  const ancestorsOf = async () => { ancestorsCalled = true; return [{ id: 'zone-1' }]; };
 
   const res = await handleIssueEvent(
     { type: DOMAIN_EVENT.ISSUE_CREATED, issue: issue() },
     { db: fakeDb, send: async () => ({ sent: 1, invalidTokens: [] }), ancestorsOf }
   );
 
-  assert.equal(ancestorsCalled, false); // cascade off → own zone only
+  assert.equal(ancestorsCalled, true); // cascade always on → ancestor lookup ran
   assert.deepEqual(seen.zoneIds, ['zone-1']);
   assert.equal(seen.role, 'incharge'); // matches ZoneAssignmentRole enum literal
   assert.deepEqual(seen.adminWhere, { clientId: 'client-1', role: 'client_admin', accountStatus: 'active' });
   assert.deepEqual(res.userIds.sort(), ['user-admin', 'user-incharge']);
 });
 
-test('cascade OFF (default env): parent-zone incharge is NOT queried or pushed', async () => {
+test('cascade always-on: incharge push reaches own zone AND ancestor zones', async () => {
   let ancestorsCalled = false;
   const fakeDb = {
     zoneAssignment: {
-      // Return an incharge for whatever zones were queried, so if the cascade
-      // path leaked in, a parent incharge would show up in the recipients.
+      // Return an incharge for every zone queried, so we can prove the ancestor
+      // zone's incharge is included.
       findMany: async ({ where }) => where.zoneId.in.map((z) => ({ userId: `incharge-${z}` })),
     },
     zone: { findUnique: async () => ({ clientId: null }) }, // no client admins
@@ -154,9 +154,9 @@ test('cascade OFF (default env): parent-zone incharge is NOT queried or pushed',
     }
   );
 
-  assert.equal(ancestorsCalled, false);               // ancestor lookup skipped
-  assert.ok(res.userIds.includes('incharge-zone-1')); // own-zone incharge reached
-  assert.ok(!res.userIds.includes('incharge-zone-parent')); // parent NOT reached
+  assert.equal(ancestorsCalled, true);                     // ancestor lookup ran
+  assert.ok(res.userIds.includes('incharge-zone-1'));      // own-zone incharge
+  assert.ok(res.userIds.includes('incharge-zone-parent')); // ancestor incharge too
   assert.ok(res.userIds.includes('user-raiser'));
 });
 

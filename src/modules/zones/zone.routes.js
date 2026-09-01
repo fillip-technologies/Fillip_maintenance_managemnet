@@ -16,7 +16,7 @@ import {
 export const zoneRouter = Router();
 
 // Building the zone tree is an admin action; incharges manage status/assignments.
-const canCreate = requireRole('super_admin', 'company_admin', 'client_admin');
+const canCreate = requireRole('super_admin', 'client_admin');
 
 zoneRouter.get('/', validate(listZonesSchema), zoneController.list);
 zoneRouter.post('/', canCreate, validate(createZoneSchema), zoneController.create);

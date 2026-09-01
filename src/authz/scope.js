@@ -1,41 +1,35 @@
 import { prisma } from '../lib/prisma.js';
-import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { zoneService } from '../modules/zones/zone.service.js';
 
 /**
- * Zone-path authorization (spec §2). Resolves what a user may see/act on into a
+ * Zone-path authorization. Resolves what a user may see/act on into a
  * normalized scope, then exposes per-resource `where` fragments and predicates.
  *
- * Scope shape:
- *   { platform: true }                         // super_admin — everything
- *   { platform:false, companyId?, clientIds[], zoneIds[], technicianId }
+ * Five roles only:
+ *   super_admin   — everything
+ *   client_admin  — one client (+ all its zones)
+ *   zone_incharge — assigned zone(s) AND all sub-zones (cascading, always on)
+ *   zone_staff    — same cascading scope as an incharge
+ *   technician    — issues assigned to them, or UNASSIGNED issues in coverage
  *
- * A resource is in scope if it belongs to a visible client OR a visible zone
- * (zoneIds are already subtree-expanded where cascading applies).
+ * Scope shape:
+ *   { platform: true }                              // super_admin
+ *   { platform:false, clientIds[], zoneIds[], technicianId }
+ *
+ * A resource is in scope if it belongs to a visible client OR a visible zone.
+ * zoneIds are always subtree-expanded — cascading down into sub-zones is the
+ * intended behavior for both incharge and staff.
  */
 export async function resolveScope(user) {
   if (user.role === 'super_admin') return { platform: true };
 
   const scope = {
     platform: false,
-    companyId: null,
     clientIds: [],
     zoneIds: [],
     technicianId: user.technicianId ?? null,
   };
-
-  if (user.role === 'company_admin') {
-    if (user.companyId) {
-      scope.companyId = user.companyId;
-      const clients = await prisma.client.findMany({
-        where: { companyId: user.companyId },
-        select: { id: true },
-      });
-      scope.clientIds = clients.map((c) => c.id);
-    }
-    return scope;
-  }
 
   if (user.role === 'client_admin') {
     if (user.clientId) scope.clientIds = [user.clientId];
@@ -50,25 +44,25 @@ export async function resolveScope(user) {
       });
       scope.clientIds = unique(coverage.map((c) => c.clientId).filter(Boolean));
       const roots = coverage.map((c) => c.zoneId).filter(Boolean);
-      scope.zoneIds = await expandZones(roots, true); // coverage includes sub-zones
+      scope.zoneIds = await expandZones(roots); // coverage cascades into sub-zones
     }
     return scope;
   }
 
-  // zone_incharge / zone_staff — visibility from active assignments.
+  // zone_incharge / zone_staff — assigned zones ALWAYS cascade into sub-zones.
   const assignments = await prisma.zoneAssignment.findMany({
     where: { userId: user.id, unassignedAt: null },
     select: { zoneId: true },
   });
   const roots = assignments.map((a) => a.zoneId);
-  const cascade = env.CASCADING_VISIBILITY && user.role === 'zone_incharge';
-  scope.zoneIds = await expandZones(roots, cascade);
+  scope.zoneIds = await expandZones(roots);
   return scope;
 }
 
-async function expandZones(roots, cascade) {
+/** Expand each root zone into its full subtree (self + all descendants). */
+async function expandZones(roots) {
   const unique_ = unique(roots);
-  if (!cascade || unique_.length === 0) return unique_;
+  if (unique_.length === 0) return unique_;
   const sets = await Promise.all(unique_.map((id) => zoneService.subtreeIds(id)));
   return unique(sets.flat());
 }
@@ -80,6 +74,9 @@ const MATCH_NONE = { id: { in: [] } };
 
 // ---- Per-resource scope `where` fragments (to be AND-combined) ----
 
+// A technician's device/daily-log visibility stays coverage-wide (they need to
+// see the devices they might service); only their ISSUE visibility is narrowed
+// to "assigned to me OR unassigned" — see issueScopeWhere.
 export function deviceScopeWhere(scope) {
   if (scope.platform) return {};
   const OR = [];
@@ -90,10 +87,23 @@ export function deviceScopeWhere(scope) {
 
 export function issueScopeWhere(scope) {
   if (scope.platform) return {};
+
+  // Technician: only issues ASSIGNED to them, or UNASSIGNED issues within their
+  // coverage (client/zone, cascading). They never see issues another technician
+  // is already handling. `assignedTechnicianId: null` == open/never-assigned,
+  // since a reopen keeps the technician attached.
+  if (scope.technicianId) {
+    const coverage = [];
+    if (scope.clientIds.length) coverage.push({ device: { zone: { clientId: { in: scope.clientIds } } } });
+    if (scope.zoneIds.length) coverage.push({ device: { zoneId: { in: scope.zoneIds } } });
+    const OR = [{ assignedTechnicianId: scope.technicianId }];
+    if (coverage.length) OR.push({ AND: [{ assignedTechnicianId: null }, { OR: coverage }] });
+    return { OR };
+  }
+
   const OR = [];
   if (scope.clientIds.length) OR.push({ device: { zone: { clientId: { in: scope.clientIds } } } });
   if (scope.zoneIds.length) OR.push({ device: { zoneId: { in: scope.zoneIds } } });
-  if (scope.technicianId) OR.push({ assignedTechnicianId: scope.technicianId });
   return OR.length ? { OR } : MATCH_NONE;
 }
 
@@ -120,9 +130,6 @@ export function clientScopeWhere(scope) {
 
 export function userScopeWhere(scope) {
   if (scope.platform) return {};
-  if (scope.companyId) {
-    return { OR: [{ companyId: scope.companyId }, { client: { companyId: scope.companyId } }] };
-  }
   return scope.clientIds.length ? { clientId: { in: scope.clientIds } } : MATCH_NONE;
 }
 
