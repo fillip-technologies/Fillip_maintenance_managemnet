@@ -19,6 +19,6 @@ dashboardRouter.get(
   '/summary',
   validate(summarySchema),
   asyncHandler(async (req, res) => {
-    sendSuccess(res, await dashboardService.summary(req.validatedQuery));
+    sendSuccess(res, await dashboardService.summary(req.validatedQuery, req.scope));
   })
 );

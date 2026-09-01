@@ -43,6 +43,7 @@ Tunable via env vars ([`.env.example`](.env.example)) so they can change without
 
 - **Layered architecture** — routes → controllers → services, with feature modules under `src/modules/`
 - **JWT auth** — access + rotating refresh tokens (hashed at rest), bcrypt passwords, role-guarded routes
+- **Zone-path authorization** — every read/write is scoped to the caller's role + zone assignments (spec §2); cross-tenant/zone access returns 404, not data
 - **Realtime** — Socket.IO with token-authenticated, server-derived zone/client rooms and a domain event bus
 - **Validation** with Zod (body / query / params) via reusable middleware
 - **Centralized error handling** with Prisma mapping and a stable `{success:false, code, message}` shape
@@ -173,6 +174,27 @@ curl http://localhost:3000/api/v1/zones?clientId=<id> \
 curl -X POST http://localhost:3000/api/v1/auth/refresh \
   -H "Content-Type: application/json" -d '{"refreshToken":"<refreshToken>"}'
 ```
+
+### Authorization (zone-path scoping)
+
+`src/authz/scope.js` resolves each request's visibility from role + active zone
+assignments; `attachScope` runs after `authenticate` and hangs it on `req.scope`.
+
+| Role            | Sees / acts on                                              |
+| --------------- | ---------------------------------------------------------- |
+| `super_admin`   | everything (platform)                                       |
+| `company_admin` | their company's clients and everything below               |
+| `client_admin`  | their client, all zones/devices/issues                     |
+| `zone_incharge` | their assigned zone(s); sub-zones only if `CASCADING_VISIBILITY=true` |
+| `zone_staff`    | their assigned zone only                                    |
+| `technician`    | coverage zones/clients + issues assigned to them           |
+
+Enforcement is uniform: list endpoints AND the scope filter into the query;
+by-id reads **and** writes load via a scoped `findFirst` and return **404** if
+out of scope (so ids don't leak across tenants); `/dashboard/summary` gates
+`scope=platform` to super_admin and asserts `client`/`zone` ids are in scope.
+Verified by `scripts/authz.mjs` (14 negative-path assertions) — run it against a
+seeded DB with the server up: `node scripts/authz.mjs`.
 
 ### Realtime (Socket.IO)
 

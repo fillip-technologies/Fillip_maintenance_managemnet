@@ -1,13 +1,15 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
+import { clientScopeWhere, combine } from '../../authz/scope.js';
 
 export const clientService = {
-  async list({ page, limit, search, companyId }) {
-    const where = {
+  async list({ page, limit, search, companyId }, scope) {
+    const filters = {
       ...(companyId ? { companyId } : {}),
       ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
     };
+    const where = combine(clientScopeWhere(scope), filters);
     const total = await prisma.client.count({ where });
     const { skip, take, meta } = paginate({ page, limit }, total);
     const items = await prisma.client.findMany({

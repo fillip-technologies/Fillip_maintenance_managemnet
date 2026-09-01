@@ -30,16 +30,25 @@ const envSchema = z.object({
   AUTO_CLOSE_DAYS: z.coerce.number().int().positive().default(3),
   // Consecutive `not_working` daily logs before a device auto-flags `faulty`.
   FAULTY_THRESHOLD: z.coerce.number().int().positive().default(3),
-  // If true, a parent zone's incharge can see its sub-zones' devices/issues.
-  CASCADING_VISIBILITY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
+  // Cascading visibility (an incharge/staff seeing their sub-zones) is always on
+  // by design — it is not configurable.
   // If true, a zone incharge may reassign a technician; otherwise admin-only.
   INCHARGE_CAN_REASSIGN: z
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+
+  // --- Push notifications (Firebase Cloud Messaging) ---
+  // ALL OPTIONAL: when unset, the push provider degrades to a no-op (logs and
+  // skips) so the server still boots and the smoke/authz suites stay green
+  // without any Firebase project. Provide EITHER a single JSON blob/path in
+  // FIREBASE_SERVICE_ACCOUNT (raw JSON or a file path), OR the three discrete
+  // fields below (handy for .env where multiline JSON is awkward).
+  FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  // Private key often carries literal "\n" in .env — normalized at load time.
+  FIREBASE_PRIVATE_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

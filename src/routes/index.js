@@ -33,7 +33,7 @@ apiRouter.use(authenticate);
 apiRouter.use(attachScope);
 
 apiRouter.use('/companies', requireRole('super_admin'), companyRouter);
-apiRouter.use('/clients', requireRole('super_admin', 'company_admin'), clientRouter);
+apiRouter.use('/clients', requireRole('super_admin'), clientRouter);
 apiRouter.use('/verticals', verticalRouter);
 apiRouter.use('/client-verticals', clientVerticalRouter);
 apiRouter.use('/users', userRouter);

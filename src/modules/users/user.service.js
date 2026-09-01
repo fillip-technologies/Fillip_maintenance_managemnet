@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
+import { userScopeWhere, combine } from '../../authz/scope.js';
 
 /**
  * Data-access + business logic for users. Controllers stay thin; all Prisma
@@ -14,17 +15,15 @@ const publicSelect = {
   name: true,
   role: true,
   accountStatus: true,
-  companyId: true,
   clientId: true,
   createdAt: true,
   updatedAt: true,
 };
 
 export const userService = {
-  async list({ page, limit, search, clientId, companyId, role }) {
-    const where = {
+  async list({ page, limit, search, clientId, role }, scope) {
+    const filters = {
       ...(clientId ? { clientId } : {}),
-      ...(companyId ? { companyId } : {}),
       ...(role ? { role } : {}),
       ...(search
         ? {
@@ -35,6 +34,7 @@ export const userService = {
           }
         : {}),
     };
+    const where = combine(userScopeWhere(scope), filters);
     const total = await prisma.user.count({ where });
     const { skip, take, meta } = paginate({ page, limit }, total);
     const items = await prisma.user.findMany({

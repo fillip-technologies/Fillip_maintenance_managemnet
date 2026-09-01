@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
+import { requireRole } from '../../middleware/authenticate.js';
 import { zoneController } from './zone.controller.js';
 import {
   listZonesSchema,
@@ -14,8 +15,11 @@ import {
 
 export const zoneRouter = Router();
 
+// Building the zone tree is an admin action; incharges manage status/assignments.
+const canCreate = requireRole('super_admin', 'client_admin');
+
 zoneRouter.get('/', validate(listZonesSchema), zoneController.list);
-zoneRouter.post('/', validate(createZoneSchema), zoneController.create);
+zoneRouter.post('/', canCreate, validate(createZoneSchema), zoneController.create);
 zoneRouter.get('/:id', validate(getZoneSchema), zoneController.get);
 zoneRouter.get('/:id/descendants', validate(descendantsSchema), zoneController.descendants);
 zoneRouter.patch('/:id', validate(updateZoneSchema), zoneController.update);

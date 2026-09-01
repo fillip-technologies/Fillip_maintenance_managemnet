@@ -44,6 +44,21 @@ export function initRealtime(httpServer) {
         select: { zoneId: true },
       });
       assignments.forEach((a) => socket.join(roomForZone(a.zoneId)));
+
+      // Technicians are scoped via technician_assignments (client- or
+      // zone-level), NOT zone_assignments — join those coverage rooms too, or a
+      // technician's issue queue would never receive live issue:created /
+      // issue:updated events (screen-flow contract).
+      if (user.technicianId) {
+        const coverage = await prisma.technicianAssignment.findMany({
+          where: { technicianId: user.technicianId },
+          select: { clientId: true, zoneId: true },
+        });
+        coverage.forEach((c) => {
+          if (c.zoneId) socket.join(roomForZone(c.zoneId));
+          if (c.clientId) socket.join(roomForClient(c.clientId));
+        });
+      }
     } catch (err) {
       logger.error({ err }, 'Socket room join failed');
     }

@@ -95,7 +95,7 @@ async function main() {
 
   console.log('\n== Issue lifecycle ==');
   const raise = await req('POST', '/issues', {
-    token: inchargeToken,
+    token: adminToken,
     body: { deviceId: device.id, categoryId: category.id, priority: 'high', description: 'Feed went dark' },
   });
   check('raise issue → 201 open', raise.status === 201 && raise.json?.data?.status === 'open', JSON.stringify(raise.json));
@@ -129,7 +129,7 @@ async function main() {
   console.log('\n== Daily logs + faulty trend ==');
   for (const off of [-2, -1, 0]) {
     await req('POST', '/daily-logs', {
-      token: inchargeToken,
+      token: adminToken,
       body: { deviceId: device.id, status: 'not_working', logDate: iso(off), notes: `day ${off}` },
     });
   }
@@ -137,7 +137,7 @@ async function main() {
   check('3× not_working → device faulty', dev4.json?.data?.status === 'faulty', dev4.json?.data?.status);
 
   const dup = await req('POST', '/daily-logs', {
-    token: inchargeToken,
+    token: adminToken,
     body: { deviceId: device.id, status: 'working', logDate: iso(0) },
   });
   check('duplicate same-day log → 409 ALREADY_LOGGED_TODAY', dup.status === 409 && dup.json?.code === 'ALREADY_LOGGED_TODAY', JSON.stringify(dup.json));

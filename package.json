@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "test:unit": "node --test scripts/*.test.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -27,6 +28,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^14.3.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "pino": "^9.6.0",

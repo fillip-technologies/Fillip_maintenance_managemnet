@@ -15,7 +15,7 @@ export const userRouter = Router();
 // Only admins may create/modify accounts — prevents any authenticated user from
 // minting a super_admin (privilege escalation). Fine-grained tenant scoping of
 // WHICH users an admin may manage is the next (authorization) phase.
-const adminOnly = requireRole('super_admin', 'company_admin', 'client_admin');
+const adminOnly = requireRole('super_admin', 'client_admin');
 
 userRouter.get('/', validate(listUsersSchema), userController.list);
 userRouter.post('/', adminOnly, validate(createUserSchema), userController.create);
