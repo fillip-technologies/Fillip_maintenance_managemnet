@@ -149,6 +149,24 @@ async function main() {
   const dash = await req('GET', `/dashboard/summary?scope=zone&id=${root.id}&includeSubzones=true`, { token: adminToken });
   check('dashboard summary returns counts', typeof dash.json?.data?.totalDevices === 'number', JSON.stringify(dash.json));
 
+  console.log('\n== Super admin platform overview ==');
+  const superLogin = await req('POST', '/auth/login', {
+    body: { email: 'super@example.com', password: 'Password123!' },
+  });
+  const superToken = superLogin.json?.data?.accessToken;
+  check('super_admin login 200', superLogin.status === 200);
+  const overview = await req('GET', '/dashboard/overview', { token: superToken });
+  const od = overview.json?.data;
+  check('overview 200 for super_admin', overview.status === 200, JSON.stringify(overview.json));
+  check('overview has tenancy counts', typeof od?.tenancy?.companies === 'number');
+  check('overview has device fleet total', typeof od?.devices?.total === 'number');
+  check('overview has issue byStatus map', typeof od?.issues?.byStatus?.open === 'number');
+  check('overview has byPriority map', typeof od?.issues?.byPriority?.critical === 'number');
+  check('overview technicians/facilities/recentActivity are arrays',
+    Array.isArray(od?.technicians?.top) && Array.isArray(od?.facilities) && Array.isArray(od?.recentActivity));
+  const overviewDenied = await req('GET', '/dashboard/overview', { token: inchargeToken });
+  check('overview 403 for non-super_admin', overviewDenied.status === 403, `got ${overviewDenied.status}`);
+
   console.log(`\n===== ${pass} passed, ${fail} failed =====`);
   process.exit(fail ? 1 : 0);
 }

@@ -17,7 +17,8 @@ export const userController = {
     sendSuccess(res, await userService.update(req.params.id, req.body));
   }),
   remove: asyncHandler(async (req, res) => {
-    // Soft-remove — returns the user in its `removed` state.
-    sendSuccess(res, await userService.remove(req.params.id));
+    // Hard-delete — the row is removed; authored records survive with a null author.
+    await userService.remove(req.params.id);
+    sendSuccess(res, { id: req.params.id, deleted: true });
   }),
 };

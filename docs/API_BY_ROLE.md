@@ -144,6 +144,7 @@ Everyone, regardless of level, starts here. Shared across the Flutter app
 | Define verticals & toggle them per client | `GET/POST /verticals`, `GET/PATCH /client-verticals` | verticals create = `super_admin` |
 | See everything (any zone/device/issue/log) | all list endpoints | scoped `{platform:true}` |
 | Platform-wide dashboard | `GET /dashboard/summary?scope=platform` | `super_admin` |
+| Full platform overview (one aggregated call for the overview page) | `GET /dashboard/overview` | `super_admin` only |
 
 ### Full cycle example — onboarding a new organization
 

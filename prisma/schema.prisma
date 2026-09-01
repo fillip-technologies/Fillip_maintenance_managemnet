@@ -95,12 +95,14 @@ model Company {
 }
 
 model Client {
-  id        String   @id @default(uuid()) @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  name      String   @db.VarChar(160)
-  type      String?  @db.VarChar(60)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  name         String   @db.VarChar(160)
+  type         String?  @db.VarChar(60)
+  facilityName String?  @map("facility_name") @db.VarChar(200)
+  location     String?  @map("location") @db.VarChar(200)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   zones                 Zone[]
@@ -146,14 +148,14 @@ model Zone {
   parentZoneId String?    @map("parent_zone_id") @db.Uuid
   name         String     @db.VarChar(120)
   status       ZoneStatus @default(draft)
-  createdById  String     @map("created_by") @db.Uuid
+  createdById  String?    @map("created_by") @db.Uuid
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
   client                Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
   parent                Zone?                  @relation("ZoneHierarchy", fields: [parentZoneId], references: [id], onDelete: Restrict)
   children              Zone[]                 @relation("ZoneHierarchy")
-  createdBy             User                   @relation("ZoneCreatedBy", fields: [createdById], references: [id])
+  createdBy             User?                  @relation("ZoneCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   assignments           ZoneAssignment[]
   devices               Device[]
   technicianAssignments TechnicianAssignment[]
@@ -210,13 +212,13 @@ model Device {
   status         DeviceStatus @default(provisioned)
   isManualEntry  Boolean      @default(false) @map("is_manual_entry")
   customSpec     Json?        @map("custom_spec")
-  addedById      String       @map("added_by") @db.Uuid
+  addedById      String?      @map("added_by") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   zone            Zone             @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   hardwareType    HardwareType?    @relation(fields: [hardwareTypeId], references: [id], onDelete: SetNull)
-  addedBy         User             @relation("DeviceAddedBy", fields: [addedById], references: [id])
+  addedBy         User?            @relation("DeviceAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
   issues          Issue[]
   dailyStatusLogs DailyStatusLog[]
 
@@ -244,7 +246,7 @@ model Issue {
   id                   String        @id @default(uuid()) @db.Uuid
   deviceId             String        @map("device_id") @db.Uuid
   categoryId           String        @map("category_id") @db.Uuid
-  raisedByUserId       String        @map("raised_by_user_id") @db.Uuid
+  raisedByUserId       String?       @map("raised_by_user_id") @db.Uuid
   assignedTechnicianId String?       @map("assigned_technician_id") @db.Uuid
   priority             IssuePriority @default(medium)
   status               IssueStatus   @default(open)
@@ -256,7 +258,7 @@ model Issue {
 
   device             Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   category           IssueCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  raisedBy           User                 @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id])
+  raisedBy           User?                @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id], onDelete: SetNull)
   assignedTechnician Technician?          @relation(fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
   statusHistory      IssueStatusHistory[]
 
@@ -270,12 +272,12 @@ model IssueStatusHistory {
   issueId         String       @map("issue_id") @db.Uuid
   fromStatus      IssueStatus? @map("from_status")
   toStatus        IssueStatus  @map("to_status")
-  changedByUserId String       @map("changed_by_user_id") @db.Uuid
+  changedByUserId String?      @map("changed_by_user_id") @db.Uuid
   changedAt       DateTime     @default(now()) @map("changed_at")
   notes           String?      @db.Text
 
   issue     Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  changedBy User  @relation("IssueStatusChangedBy", fields: [changedByUserId], references: [id])
+  changedBy User? @relation("IssueStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
 
   @@index([issueId])
   @@map("issue_status_history")
@@ -288,14 +290,14 @@ model IssueStatusHistory {
 model DailyStatusLog {
   id             String      @id @default(uuid()) @db.Uuid
   deviceId       String      @map("device_id") @db.Uuid
-  loggedByUserId String      @map("logged_by_user_id") @db.Uuid
+  loggedByUserId String?     @map("logged_by_user_id") @db.Uuid
   status         DailyStatus
   logDate        DateTime    @map("log_date") @db.Date
   notes          String?     @db.Text
   createdAt      DateTime    @default(now()) @map("created_at")
 
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  loggedBy User   @relation("DailyLogLoggedBy", fields: [loggedByUserId], references: [id])
+  loggedBy User?  @relation("DailyLogLoggedBy", fields: [loggedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([deviceId, logDate])
   @@map("daily_status_logs")

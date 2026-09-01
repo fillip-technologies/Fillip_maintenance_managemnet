@@ -1042,6 +1042,40 @@ curl "http://localhost:3000/api/v1/dashboard/summary?scope=zone&id=<zoneId>&incl
 
 **Errors:** `400` if `id` is missing for `zone`/`client` scope.
 
+### `GET /dashboard/overview`
+Platform-wide aggregate backing the **super_admin** overview page — one call for
+the whole dashboard (tenancy, device fleet, work orders, alerts, technicians,
+client facilities, recent activity). **`super_admin` only** (`403` otherwise).
+
+**Request**
+```bash
+curl "http://localhost:3000/api/v1/dashboard/overview" \
+  -H "Authorization: Bearer <accessToken>"
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "data": {
+    "tenancy":   { "companies": 13, "activeCompanies": 13, "clients": 13, "zones": 30, "activeZones": 21, "users": 34, "technicians": 10 },
+    "devices":   { "total": 30, "working": 11, "underMaintenance": 4, "faulty": 0, "provisioned": 15, "retired": 0, "missingTodayLog": 27 },
+    "byHardwareType": [ { "hardwareTypeId": "…", "name": "CCTV camera", "total": 4, "working": 2, "underMaintenance": 1, "faulty": 0 } ],
+    "issues":    { "total": 37, "open": 35, "byStatus": { "open": 20, "assigned": 6, "in_progress": 0, "on_hold": 0, "resolved": 9, "closed": 2, "reopened": 0 }, "byPriority": { "low": 10, "medium": 11, "high": 10, "critical": 4 }, "createdToday": 37, "resolvedToday": 11, "closedToday": 2 },
+    "criticalAlerts": [ { "id": "…", "title": "…", "priority": "critical", "status": "open", "deviceName": "…", "zoneName": "…", "clientName": "…", "assignedTo": null, "createdAt": "…" } ],
+    "technicians": { "total": 10, "busy": 10, "idle": 0, "top": [ { "id": "…", "name": "Amit Shah", "specialization": "CCTV / networking", "openAssigned": 4 } ] },
+    "facilities": [ { "clientId": "…", "name": "City Zoo", "companyName": "Acme Facilities Group", "zones": 9, "devices": 9, "faultyDevices": 0, "openIssues": 17 } ],
+    "recentActivity": [ { "id": "…", "issueId": "…", "fromStatus": "open", "toStatus": "assigned", "priority": "high", "title": "…", "deviceName": "…", "zoneName": "…", "clientName": "…", "changedBy": "Super Admin", "changedAt": "…" } ]
+  }
+}
+```
+- `devices.total` and per-hardware-type totals exclude retired devices; `working` = `active`.
+- `issues.byStatus` always carries all 7 states (zero-filled); `open` = every non-`closed`/non-`resolved`… state in `OPEN_ISSUE_STATES`. `byPriority` is over open issues only.
+- `technicians.busy` = technicians with ≥1 open assigned issue; `top` is the 5 busiest.
+- `facilities` are clients sorted by open-issue load; counts are reduced in JS (no N+1).
+
+**Errors:** `403 FORBIDDEN` for any non-`super_admin` caller.
+
 ---
 
 ## 19. Realtime (Socket.IO)
