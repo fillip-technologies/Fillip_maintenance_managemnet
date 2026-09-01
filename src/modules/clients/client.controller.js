@@ -4,7 +4,7 @@ import { clientService } from './client.service.js';
 
 export const clientController = {
   list: asyncHandler(async (req, res) => {
-    const { items, meta } = await clientService.list(req.validatedQuery);
+    const { items, meta } = await clientService.list(req.validatedQuery, req.scope);
     sendSuccess(res, listPayload(items, meta));
   }),
   get: asyncHandler(async (req, res) => {

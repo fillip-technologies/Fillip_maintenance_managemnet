@@ -33,6 +33,7 @@ effects, and the errors it can return.
 17. [Technicians](#17-technicians)
 18. [Dashboard](#18-dashboard)
 19. [Realtime (Socket.IO)](#19-realtime-socketio)
+    - [19a. Push notifications (FCM)](#19a-push-notifications-firebase-cloud-messaging)
 20. [State machines reference](#20-state-machines-reference)
 
 ---
@@ -178,6 +179,7 @@ Errors always use the error envelope. Common machine `code`s:
 | `NOT_FOUND` | 404 | Resource or route not found |
 | `CONFLICT` | 409 | Uniqueness/dependency conflict |
 | `DUPLICATE_ASSIGNMENT` | 409 | User already has that active zone assignment |
+| `DUPLICATE_ZONE_NAME` | 409 | Another zone under the same client already has that name (case-insensitive) |
 | `ALREADY_LOGGED_TODAY` | 409 | A daily log for that device/day already exists |
 | `DB_REQUEST_ERROR` | 400 | Unmapped database error |
 | `INTERNAL_ERROR` | 500 | Unexpected error |
@@ -587,11 +589,13 @@ filters to root zones), `status` (`draft`|`active`|`inactive`), `search`.
 | ----- | ---- | -------- | ----- |
 | `clientId` | uuid | yes | |
 | `parentZoneId` | uuid | no | sub-zone must share the parent's `clientId` |
-| `name` | string | yes | 1–120 |
+| `name` | string | yes | 1–120; **unique per client, case-insensitive** (a zone and a sub-zone under the same client may not share a name) |
 | `createdById` | uuid | no | normally derived from the token |
 
 **Response `201`** — created zone (status defaults to `draft`).
-**Errors:** `400` if the parent doesn't exist or belongs to a different client.
+**Errors:** `400` if the parent doesn't exist or belongs to a different client;
+`409 DUPLICATE_ZONE_NAME` if another zone under the same client already has that
+name (case-insensitive). `PATCH /zones/:id` returns the same `409` on rename.
 
 ### `GET /zones/:id`
 Returns the zone with immediate `children`, active `assignments` (incl. user), and device
@@ -1043,10 +1047,12 @@ curl "http://localhost:3000/api/v1/dashboard/summary?scope=zone&id=<zoneId>&incl
 ## 19. Realtime (Socket.IO)
 
 Connect a Socket.IO client with the **access token** in the handshake auth. The server
-verifies it and joins you to server-derived rooms:
+verifies it and joins you to server-derived rooms (clients never name their own rooms):
 
-- `client:<clientId>` — your client room
-- `zone:<zoneId>` — each of your active zone assignments
+- `client:<clientId>` — your client room (any user with a `clientId`)
+- `zone:<zoneId>` — each of your active **zone assignments** (incharge / staff)
+- `zone:<zoneId>` / `client:<clientId>` — each of a **technician's**
+  `technician_assignments` (coverage rooms; a technician has no zone_assignments)
 - `platform:all` — for `super_admin`
 
 ```js
@@ -1066,8 +1072,52 @@ socket.on('log:submitted', (payload) => { /* { log, zoneId } */ });
 | `issue:updated` | `PATCH /issues/:id/status` or `/assign` succeeds | the updated issue |
 | `log:submitted` | `POST /daily-logs` succeeds | the daily-log row + its device's zone |
 
-Events are routed to the relevant `zone:` / `client:` rooms so clients only receive what
-their scope covers.
+Each event fans out to the device's **zone + every ancestor zone + owning client
++ `platform:all`**, so clients only receive what their scope covers (with the one
+known exception noted below).
+
+> **Known gap:** the socket broadcast fans to *all* ancestor zones regardless of
+> `CASCADING_VISIBILITY`, while HTTP reads and push honor it. With the flag off, a
+> parent-zone incharge may get a live event for a child-zone issue they can't
+> open over HTTP.
+
+---
+
+## 19a. Push notifications (Firebase Cloud Messaging)
+
+The same domain events that drive realtime also drive **push**. There is no push
+API to call per event — clients only **register a device token** once, and the
+server pushes automatically.
+
+**Registration:** `POST /auth/device-token` (see §7) stores an FCM token per
+user. Dead tokens are pruned automatically when FCM reports them unregistered.
+
+**Configuration:** FCM is enabled only when Firebase credentials are present in
+the environment (`FIREBASE_SERVICE_ACCOUNT`, or `FIREBASE_PROJECT_ID` +
+`FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`). When unset, the sender is a
+logged **no-op** — the API still runs, it just doesn't dispatch pushes.
+
+**Who gets pushed, per event**
+
+| Issue event → status | Recipients | `data.type` |
+| -------------------- | ---------- | ----------- |
+| `issue:created` | client_admin(s) + device-zone incharge(s)¹ | `issue_created` |
+| → `assigned` | the assigned technician | `issue_assigned` |
+| → `in_progress` | raiser + incharge | `issue_in_progress` |
+| → `on_hold` | raiser + incharge | `issue_on_hold` |
+| → `resolved` | raiser + incharge | `issue_resolved` |
+| → `reopened` | the assigned technician | `issue_reopened` |
+| → `closed` | raiser + technician | `issue_closed` |
+
+¹ Incharge pushes honor `CASCADING_VISIBILITY`: own zone only, unless the flag is
+on (then zone + ancestors).
+
+**Payload the device receives**
+```json
+{ "notification": { "title": "New issue assigned", "body": "Cam - Snake Enclosure East: no power" },
+  "data": { "type": "issue_assigned", "issueId": "f0000000-...0001" } }
+```
+The `data.issueId` is used to deep-link into the issue detail screen.
 
 ---
 

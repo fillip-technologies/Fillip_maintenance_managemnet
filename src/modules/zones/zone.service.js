@@ -111,6 +111,30 @@ export const zoneService = {
     return rows.map((r) => r.id);
   },
 
+  /**
+   * Enforce that a zone name is unique within its client (case-insensitive).
+   * A zone and a sub-zone — or any two zones anywhere under the same client —
+   * may not share a name. `excludeId` skips the row being renamed.
+   */
+  async assertUniqueName(clientId, name, excludeId) {
+    if (!name) return;
+    const clash = await prisma.zone.findFirst({
+      where: {
+        clientId,
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      throw ApiError.conflict(
+        `A zone named "${name}" already exists for this client`,
+        undefined,
+        'DUPLICATE_ZONE_NAME'
+      );
+    }
+  },
+
   async create({ parentZoneId, clientId, createdById, ...rest }, user, scope) {
     const creatorId = user?.id ?? createdById;
     if (!creatorId) throw ApiError.badRequest('Creator could not be determined');
@@ -123,6 +147,7 @@ export const zoneService = {
         throw ApiError.badRequest('Parent zone belongs to a different client');
       }
     }
+    await this.assertUniqueName(clientId, rest.name);
     return prisma.zone.create({ data: { clientId, parentZoneId, createdById: creatorId, ...rest } });
   },
 
@@ -136,6 +161,7 @@ export const zoneService = {
         throw ApiError.badRequest('Parent zone belongs to a different client');
       }
     }
+    if (data.name !== undefined) await this.assertUniqueName(zone.clientId, data.name, id);
     return prisma.zone.update({ where: { id }, data });
   },
 
@@ -185,7 +211,8 @@ export const zoneService = {
     });
   },
 
-  async unassign(zoneId, assignmentId) {
+  async unassign(zoneId, assignmentId, scope) {
+    await this.getByIdInScope(zoneId, scope); // 404 if the zone is out of scope
     const assignment = await prisma.zoneAssignment.findFirst({
       where: { id: assignmentId, zoneId, unassignedAt: null },
     });
@@ -196,8 +223,8 @@ export const zoneService = {
     });
   },
 
-  async listAssignments(zoneId) {
-    await this.getById(zoneId);
+  async listAssignments(zoneId, scope) {
+    await this.getByIdInScope(zoneId, scope);
     return prisma.zoneAssignment.findMany({
       where: { zoneId, unassignedAt: null },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },

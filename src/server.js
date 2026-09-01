@@ -3,6 +3,8 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './lib/prisma.js';
 import { initRealtime } from './realtime/socket.js';
+import { initPush } from './push/provider.js';
+import { initPushNotifier } from './push/notifier.js';
 
 const app = createApp();
 
@@ -12,6 +14,10 @@ const server = app.listen(env.PORT, () => {
 
 // Attach Socket.IO to the same HTTP server.
 initRealtime(server);
+
+// Initialize FCM (no-op when unconfigured) and subscribe push to domain events.
+initPush();
+initPushNotifier();
 
 /**
  * Graceful shutdown: stop accepting connections, drain in-flight requests,

@@ -410,3 +410,11 @@ CREATE UNIQUE INDEX "zone_assignments_active_unique"
 ALTER TABLE "technician_assignments"
   ADD CONSTRAINT "technician_assignment_scope"
   CHECK ("client_id" IS NOT NULL OR "zone_id" IS NOT NULL);
+
+-- Zone names are unique within a client, case-insensitively — a zone and a
+-- sub-zone (or any two zones under the same client) may not share a name.
+-- Enforced in the service layer too (clean 409 DUPLICATE_ZONE_NAME); this index
+-- is the race-proof backstop. Functional index → raw SQL, not expressible in
+-- the Prisma schema.
+CREATE UNIQUE INDEX "zones_client_name_unique"
+  ON "zones" ("client_id", lower("name"));

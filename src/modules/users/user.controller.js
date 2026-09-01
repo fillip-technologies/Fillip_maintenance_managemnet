@@ -4,7 +4,7 @@ import { userService } from './user.service.js';
 
 export const userController = {
   list: asyncHandler(async (req, res) => {
-    const { items, meta } = await userService.list(req.validatedQuery);
+    const { items, meta } = await userService.list(req.validatedQuery, req.scope);
     sendSuccess(res, listPayload(items, meta));
   }),
   get: asyncHandler(async (req, res) => {
