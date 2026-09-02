@@ -26,8 +26,8 @@ const CRITICAL = [
   ['users', 'id'], ['users', 'company_id'], ['users', 'client_id'],
   ['companies', 'id'], ['clients', 'id'], ['clients', 'company_id'],
   ['zones', 'id'], ['zones', 'client_id'], ['zones', 'parent_zone_id'],
-  ['devices', 'id'], ['devices', 'zone_id'],
-  ['products', 'id'], ['products', 'company_id'],
+  ['devices', 'id'], ['devices', 'zone_id'], ['devices', 'company_id'], ['devices', 'category_id'],
+  ['product_categories', 'id'],
   ['issues', 'id'], ['issues', 'device_id'],
   ['refresh_tokens', 'user_id'],
 ];
