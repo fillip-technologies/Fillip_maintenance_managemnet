@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
+import { requireRole } from '../../middleware/authenticate.js';
 import { issueController } from './issue.controller.js';
 import {
   listIssuesSchema,
@@ -18,4 +19,5 @@ issueRouter.get('/:id', validate(getIssueSchema), issueController.get);
 issueRouter.patch('/:id', validate(updateIssueSchema), issueController.update);
 issueRouter.get('/:id/history', validate(getIssueSchema), issueController.history);
 issueRouter.patch('/:id/status', validate(transitionIssueSchema), issueController.setStatus);
-issueRouter.patch('/:id/assign', validate(assignIssueSchema), issueController.assign);
+// Only super_admin can assign technicians to issues (work assignment).
+issueRouter.patch('/:id/assign', requireRole('super_admin'), validate(assignIssueSchema), issueController.assign);

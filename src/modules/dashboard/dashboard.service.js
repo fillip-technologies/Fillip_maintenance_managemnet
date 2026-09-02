@@ -104,7 +104,8 @@ export const dashboardService = {
       prisma.client.count(),
       prisma.zone.count(),
       prisma.zone.count({ where: { status: 'active' } }),
-      prisma.user.count({ where: { accountStatus: { not: 'removed' } } }),
+      // Super admin is a platform operator, not a managed tenant user — exclude it.
+      prisma.user.count({ where: { accountStatus: { not: 'removed' }, role: { not: 'super_admin' } } }),
       prisma.technician.count(),
 
       // Device fleet, grouped by status (retired excluded from the working set).
