@@ -91,6 +91,7 @@ model Company {
 
   clients       Client[]
   users         User[]
+  devices       Device[]
   products      Product[]
   productAudits ProductAudit[]
 
@@ -205,13 +206,23 @@ model HardwareType {
   @@map("hardware_types")
 }
 
+// A Device is the canonical tracked hardware unit ("Product"). It carries both
+// catalog attributes (code, category, price) AND deployment/lifecycle state
+// (zone, status, daily logs, issues). A unit with `zoneId = null` is IN STOCK
+// (owned by a company, not yet deployed to a zone); deploying assigns a zone.
 model Device {
   id             String       @id @default(uuid()) @db.Uuid
-  zoneId         String       @map("zone_id") @db.Uuid
+  companyId      String?      @map("company_id") @db.Uuid   // owning organization (set even in stock)
+  zoneId         String?      @map("zone_id") @db.Uuid      // null = in stock (not deployed)
+  categoryId     String?      @map("category_id") @db.Uuid
   hardwareTypeId String?      @map("hardware_type_id") @db.Uuid
+  code           String?      @unique @db.VarChar(40)        // system-generated unique id, e.g. CAM-000123
   name           String       @db.VarChar(120)
   location       String?      @db.VarChar(200)
+  unitPrice      Decimal?     @map("unit_price") @db.Decimal(12, 2)
+  purchaseDate   DateTime?    @map("purchase_date") @db.Date
   installDate    DateTime?    @map("install_date") @db.Date
+  imageUrl       String?      @map("image_url") @db.Text
   status         DeviceStatus @default(provisioned)
   isManualEntry  Boolean      @default(false) @map("is_manual_entry")
   customSpec     Json?        @map("custom_spec")
@@ -219,14 +230,35 @@ model Device {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  zone            Zone             @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  // Zone SetNull (not Cascade): deleting a zone returns its units to stock
+  // rather than destroying the (expensive) hardware records.
+  company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  zone            Zone?            @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   hardwareType    HardwareType?    @relation(fields: [hardwareTypeId], references: [id], onDelete: SetNull)
   addedBy         User?            @relation("DeviceAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
   issues          Issue[]
   dailyStatusLogs DailyStatusLog[]
 
   @@index([zoneId, status])
+  @@index([companyId])
+  @@index([categoryId])
   @@map("devices")
+}
+
+// Global product category (shared across ALL organizations, managed by the CEO).
+// `code` is the prefix used to build a unit's unique id (e.g. "CAM" → CAM-000123),
+// and `lastSeq` is the atomic per-category counter for that id.
+model ProductCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(100)
+  code      String   @unique @db.VarChar(12)
+  lastSeq   Int      @default(0) @map("last_seq")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  devices Device[]
+
+  @@map("product_categories")
 }
 
 // ---------------------------------------------------------------------------

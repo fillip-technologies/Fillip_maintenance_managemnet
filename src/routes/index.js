@@ -15,6 +15,7 @@ import { technicianRouter } from '../modules/technicians/technician.routes.js';
 import { verticalRouter, clientVerticalRouter } from '../modules/verticals/vertical.routes.js';
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 import { productRouter } from '../modules/products/product.routes.js';
+import { productCategoryRouter } from '../modules/productCategories/productCategory.routes.js';
 
 /**
  * Versioned API surface. `/auth` is public (login/refresh); everything below
@@ -47,3 +48,4 @@ apiRouter.use('/daily-logs', dailyLogRouter);
 apiRouter.use('/technicians', technicianRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/products', productRouter);
+apiRouter.use('/product-categories', productCategoryRouter);

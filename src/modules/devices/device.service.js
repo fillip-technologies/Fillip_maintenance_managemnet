@@ -3,6 +3,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { OPEN_ISSUE_STATES } from '../../utils/issueStateMachine.js';
 import { zoneService } from '../zones/zone.service.js';
+import { reserveCodes } from '../productCategories/productCategory.service.js';
 import { deviceScopeWhere, combine, zoneInScope, assertInScope } from '../../authz/scope.js';
 
 /** Manual device status transitions. `under_maintenance` and `faulty` are set
@@ -18,7 +19,32 @@ const DEVICE_MANUAL_TRANSITIONS = {
 const withZone = {
   zone: { select: { id: true, name: true, clientId: true } },
   hardwareType: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true, code: true } },
+  company: { select: { id: true, name: true } },
 };
+
+/**
+ * Resolve the owning company for a new unit.
+ *  - client_admin: locked to their own organization (their companyId).
+ *  - super_admin: must supply companyId, OR it's derived from the target zone.
+ * When a zone is given, the zone's company must match the resolved company.
+ */
+async function resolveUnitCompany(user, { companyId, zoneClientCompanyId }) {
+  if (user?.role === 'client_admin') {
+    if (!user.companyId) throw ApiError.forbidden('Your account is not attached to an organization');
+    if (companyId && companyId !== user.companyId) {
+      throw ApiError.forbidden('You can only add units to your own organization');
+    }
+    return user.companyId;
+  }
+  // super_admin (or other privileged callers)
+  const resolved = companyId ?? zoneClientCompanyId ?? null;
+  if (!resolved) throw ApiError.badRequest('Select an organization (companyId) for the unit', undefined, 'COMPANY_REQUIRED');
+  if (zoneClientCompanyId && resolved !== zoneClientCompanyId) {
+    throw ApiError.badRequest('Zone belongs to a different organization than the one selected');
+  }
+  return resolved;
+}
 
 export const deviceService = {
   async list({ page, limit, zoneId, includeSubzones, status, search }, scope) {
@@ -71,6 +97,66 @@ export const deviceService = {
     if (!zone) throw ApiError.badRequest('Zone does not exist');
     assertInScope(zoneInScope(scope, zone), 'Cannot add a device to a zone outside your scope');
     return prisma.device.create({ data: { ...data, addedById: creatorId }, include: withZone });
+  },
+
+  /**
+   * Create a tracked unit ("Product"): category is REQUIRED, zone is OPTIONAL
+   * (no zone → in stock), owning company is set, and a unique code is minted in
+   * the same transaction. This is the unified product/device create path.
+   */
+  async createUnit({ categoryId, companyId, zoneId, ...data }, user, scope) {
+    const creatorId = user?.id;
+    if (!creatorId) throw ApiError.badRequest('Creator could not be determined');
+    if (!categoryId) throw ApiError.badRequest('A category is required', undefined, 'CATEGORY_REQUIRED');
+
+    const category = await prisma.productCategory.findUnique({ where: { id: categoryId }, select: { id: true } });
+    if (!category) throw ApiError.badRequest('Category does not exist');
+
+    // If a zone is given, it must exist and be in scope; derive its company.
+    let zoneClientCompanyId = null;
+    if (zoneId) {
+      const zone = await prisma.zone.findUnique({
+        where: { id: zoneId },
+        select: { id: true, clientId: true, client: { select: { companyId: true } } },
+      });
+      if (!zone) throw ApiError.badRequest('Zone does not exist');
+      assertInScope(zoneInScope(scope, zone), 'Cannot add a unit to a zone outside your scope');
+      zoneClientCompanyId = zone.client?.companyId ?? null;
+    }
+
+    const resolvedCompanyId = await resolveUnitCompany(user, { companyId, zoneClientCompanyId });
+
+    return prisma.$transaction(async (tx) => {
+      const { codes } = await reserveCodes(tx, categoryId, 1);
+      return tx.device.create({
+        data: {
+          ...data,
+          code: codes[0],
+          categoryId,
+          companyId: resolvedCompanyId,
+          zoneId: zoneId ?? null,
+          addedById: creatorId,
+        },
+        include: withZone,
+      });
+    });
+  },
+
+  /** Deploy an in-stock unit into a zone (assign zone + activate). */
+  async deploy(id, zoneId, user, scope) {
+    const device = await this.getById(id, scope);
+    const zone = await prisma.zone.findUnique({
+      where: { id: zoneId },
+      select: { id: true, clientId: true, client: { select: { companyId: true } } },
+    });
+    if (!zone) throw ApiError.badRequest('Zone does not exist');
+    assertInScope(zoneInScope(scope, zone), 'Cannot deploy to a zone outside your scope');
+    // Keep org integrity: a unit only deploys into a zone of its own company.
+    if (device.companyId && zone.client?.companyId && device.companyId !== zone.client.companyId) {
+      throw ApiError.badRequest('Zone belongs to a different organization than the unit');
+    }
+    const status = device.status === 'provisioned' ? 'active' : device.status;
+    return prisma.device.update({ where: { id }, data: { zoneId, status }, include: withZone });
   },
 
   async update(id, data, scope) {

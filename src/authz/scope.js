@@ -28,11 +28,15 @@ export async function resolveScope(user) {
     platform: false,
     clientIds: [],
     zoneIds: [],
+    // Organizations whose company-level (in-stock) inventory the caller may see.
+    // Only the org head gets this — zone roles are zone-scoped.
+    companyIds: [],
     technicianId: user.technicianId ?? null,
   };
 
   if (user.role === 'client_admin') {
     if (user.clientId) scope.clientIds = [user.clientId];
+    if (user.companyId) scope.companyIds = [user.companyId];
     return scope;
   }
 
@@ -82,6 +86,11 @@ export function deviceScopeWhere(scope) {
   const OR = [];
   if (scope.clientIds.length) OR.push({ zone: { clientId: { in: scope.clientIds } } });
   if (scope.zoneIds.length) OR.push({ zoneId: { in: scope.zoneIds } });
+  // In-stock units (no zone) are visible to their owning organization's head.
+  // Gated on `zoneId: null` so this never widens visibility of DEPLOYED units.
+  if (scope.companyIds?.length) {
+    OR.push({ AND: [{ zoneId: null }, { companyId: { in: scope.companyIds } }] });
+  }
   return OR.length ? { OR } : MATCH_NONE;
 }
 
