@@ -14,23 +14,29 @@ export const listDevicesSchema = z.object({
 
 export const getDeviceSchema = z.object({ params: idParam });
 
+// Unified unit ("Product") create: category REQUIRED, zone OPTIONAL (no zone =
+// in stock), company optional (locked to own org for a client_admin; required
+// for a super_admin unless derived from a zone). Code is generated server-side.
 export const createDeviceSchema = z.object({
-  body: z
-    .object({
-      zoneId: z.string().uuid(),
-      hardwareTypeId: z.string().uuid().optional(),
-      name: z.string().trim().min(1).max(120),
-      location: z.string().trim().max(200).optional(),
-      installDate: z.coerce.date().optional(),
-      isManualEntry: z.boolean().default(false),
-      customSpec: z.record(z.any()).optional(),
-      // Normally derived from the authenticated user; accepted as a fallback.
-      addedById: z.string().uuid().optional(),
-    })
-    .refine((d) => d.isManualEntry || !!d.hardwareTypeId, {
-      message: 'hardwareTypeId is required unless isManualEntry is true',
-      path: ['hardwareTypeId'],
-    }),
+  body: z.object({
+    categoryId: z.string().uuid(),
+    companyId: z.string().uuid().optional(),
+    zoneId: z.string().uuid().optional(),
+    hardwareTypeId: z.string().uuid().optional(),
+    name: z.string().trim().min(1).max(120),
+    location: z.string().trim().max(200).optional(),
+    unitPrice: z.coerce.number().nonnegative().optional(),
+    purchaseDate: z.coerce.date().optional(),
+    installDate: z.coerce.date().optional(),
+    imageUrl: z.string().trim().max(2000).optional(),
+    isManualEntry: z.boolean().default(false),
+    customSpec: z.record(z.any()).optional(),
+  }),
+});
+
+export const deployDeviceSchema = z.object({
+  params: idParam,
+  body: z.object({ zoneId: z.string().uuid() }),
 });
 
 export const updateDeviceSchema = z.object({

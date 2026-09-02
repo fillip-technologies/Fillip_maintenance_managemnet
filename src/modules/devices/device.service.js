@@ -71,8 +71,14 @@ export const deviceService = {
       take,
       include: withZone,
     });
-    // Flatten zoneName alongside the nested zone, per the frontend contract.
-    const items = rows.map((d) => ({ ...d, zoneName: d.zone?.name ?? null }));
+    // Flatten the labels the unit views render, per the frontend contract.
+    const items = rows.map((d) => ({
+      ...d,
+      zoneName: d.zone?.name ?? null,
+      categoryName: d.category?.name ?? null,
+      companyName: d.company?.name ?? null,
+      inStock: d.zoneId === null,
+    }));
     return { items, meta };
   },
 

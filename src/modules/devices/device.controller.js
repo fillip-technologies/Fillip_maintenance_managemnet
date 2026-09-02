@@ -11,7 +11,10 @@ export const deviceController = {
     sendSuccess(res, await deviceService.getById(req.params.id, req.scope));
   }),
   create: asyncHandler(async (req, res) => {
-    sendCreated(res, await deviceService.create(req.body, req.user, req.scope));
+    sendCreated(res, await deviceService.createUnit(req.body, req.user, req.scope));
+  }),
+  deploy: asyncHandler(async (req, res) => {
+    sendSuccess(res, await deviceService.deploy(req.params.id, req.body.zoneId, req.user, req.scope));
   }),
   update: asyncHandler(async (req, res) => {
     sendSuccess(res, await deviceService.update(req.params.id, req.body, req.scope));
