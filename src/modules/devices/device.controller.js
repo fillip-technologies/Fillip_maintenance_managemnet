@@ -1,6 +1,8 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess, sendCreated, listPayload } from '../../utils/response.js';
+import { ApiError } from '../../utils/ApiError.js';
 import { deviceService } from './device.service.js';
+import { deviceImportService } from './deviceImport.service.js';
 
 export const deviceController = {
   list: asyncHandler(async (req, res) => {
@@ -21,5 +23,22 @@ export const deviceController = {
   }),
   setStatus: asyncHandler(async (req, res) => {
     sendSuccess(res, await deviceService.setStatus(req.params.id, req.body.status, req.scope));
+  }),
+
+  // --- Bulk import ---
+  importTemplate: asyncHandler(async (_req, res) => {
+    const buffer = await deviceImportService.buildTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="units_import_template.xlsx"');
+    res.send(Buffer.from(buffer));
+  }),
+  importUnits: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('No file uploaded (field name: file)');
+    const companyId = req.body.companyId || req.query.companyId;
+    const dryRun = req.query.dryRun === 'true';
+    const result = dryRun
+      ? await deviceImportService.dryRun(req.file.buffer, req.user, req.scope, companyId)
+      : await deviceImportService.commit(req.file.buffer, req.user, req.scope, companyId);
+    sendSuccess(res, result);
   }),
 };
