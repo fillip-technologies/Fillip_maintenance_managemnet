@@ -176,6 +176,24 @@ already works.)*
 
 ## 6. Where We Are Today (state as of 2026-09-02)
 
+### ✅ Phase 0 & Phase 1 COMPLETE (merged to main)
+- **Phase 0**: DB type-drift guard (`npm run db:verify`), work committed & checkpointed.
+- **Phase 1 — unified Product/Unit + catalog**:
+  - `Device` is the canonical tracked unit: `companyId`, unique `code` (e.g. CAM-000123),
+    `categoryId`, price, image; `zoneId` nullable (null = **in stock**); zone-delete →
+    SetNull (units return to stock).
+  - Global **ProductCategory** (CEO-managed) + atomic, batch-capable code generation.
+  - HTTP: `POST /devices` (category required, zone optional), `POST /devices/:id/deploy`,
+    `/product-categories`, and **Excel import** (`/devices/import` template → dry-run → commit).
+  - Frontend repointed: category dropdown, unique-code column, in-stock badge, Excel
+    import modal, single add — on both super-admin and client-admin inventory.
+  - Legacy `products` table/module/UI **retired** (data migrated to units).
+  - All verified end-to-end; `db:verify` green.
+- **Remaining known blocker for defects** (Phase 1.5): raising a defect needs an
+  `IssueCategory`, which is tied to a `hardwareTypeId` — but units use `ProductCategory`
+  and often have no hardware type. Must reconcile (make issue category work off
+  ProductCategory, or make it optional) before the web raise-defect flow.
+
 ### Built & working
 - **Stack**: Node/Express/Prisma/PostgreSQL(Neon) backend; Vite/React web; socket.io
   realtime; optional FCM push + SMTP email (graceful no-op when unconfigured).
