@@ -30,8 +30,10 @@ const publicSelect = {
   addedBy: { select: { id: true, name: true } },
 };
 
-/** The company a client_admin belongs to (via their client), or null. */
+/** The company the caller belongs to. Prefers the direct company_id on the
+ * user (now always stamped); falls back to their client's company. */
 async function callerCompanyId(user) {
+  if (user?.companyId) return user.companyId;
   if (!user?.clientId) return null;
   const client = await prisma.client.findUnique({
     where: { id: user.clientId },

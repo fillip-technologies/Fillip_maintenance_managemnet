@@ -90,6 +90,7 @@ model Company {
   updatedAt DateTime      @updatedAt @map("updated_at")
 
   clients       Client[]
+  users         User[]
   products      Product[]
   productAudits ProductAudit[]
 
@@ -349,6 +350,7 @@ model TechnicianAssignment {
 
 model User {
   id            String        @id @default(uuid()) @db.Uuid
+  companyId     String?       @map("company_id") @db.Uuid
   clientId      String?       @map("client_id") @db.Uuid
   name          String        @db.VarChar(120)
   email         String        @unique @db.VarChar(200)
@@ -358,7 +360,8 @@ model User {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   technicianProfile  Technician?
   createdZones       Zone[]               @relation("ZoneCreatedBy")
@@ -372,6 +375,7 @@ model User {
   addedProducts      Product[]            @relation("ProductAddedBy")
   productAuditChanges ProductAudit[]      @relation("ProductAuditChangedBy")
 
+  @@index([companyId])
   @@index([clientId])
   @@map("users")
 }

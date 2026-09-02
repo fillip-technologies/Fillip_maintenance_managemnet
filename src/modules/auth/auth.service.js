@@ -14,6 +14,8 @@ function accessClaims(user, technicianId) {
     sub: user.id,
     role: user.role,
     clientId: user.clientId,
+    // Organization the user belongs to (the Company above their client).
+    companyId: user.companyId ?? null,
     technicianId: technicianId ?? null,
   };
 }
@@ -65,6 +67,7 @@ export const authService = {
         name: user.name,
         role: user.role,
         clientId: user.clientId,
+        companyId: user.companyId ?? null,
         zoneId,
       },
       zoneDescendants,

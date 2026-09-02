@@ -18,6 +18,7 @@ const publicSelect = {
   role: true,
   accountStatus: true,
   clientId: true,
+  companyId: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -62,10 +63,27 @@ export const userService = {
     assertRoleAllowed(caller, data.role);
     if (data.role === 'super_admin') await assertSingleSuperAdmin();
     // A client_admin may only create users inside its own client — never in
-    // another tenant, and never a detached (clientless) account.
+    // another tenant, and never a detached (clientless) account. Created users
+    // inherit the client_admin's organization (company).
     if (caller?.role === 'client_admin') {
       if (!caller.clientId) throw ApiError.forbidden('Your account is not attached to a client');
       data.clientId = caller.clientId;
+      data.companyId = caller.companyId ?? null;
+    }
+    if (data.role === 'technician') {
+      // Technicians are platform-level field engineers (managed via the mobile
+      // app) — they belong to NO company or client. Force both null regardless
+      // of what was supplied.
+      data.companyId = null;
+      data.clientId = null;
+    } else if (data.clientId && !data.companyId) {
+      // Whenever a user is attached to a client, stamp the client's company so
+      // every user carries their organization directly (not only via the client).
+      const client = await prisma.client.findUnique({
+        where: { id: data.clientId },
+        select: { companyId: true },
+      });
+      data.companyId = client?.companyId ?? null;
     }
     const passwordHash = password ? await hashPassword(password) : null;
     const user = await prisma.user.create({ data: { ...data, passwordHash }, select: publicSelect });

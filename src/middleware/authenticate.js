@@ -31,6 +31,7 @@ export function authenticate(req, _res, next) {
         id: true,
         role: true,
         clientId: true,
+        companyId: true,
         accountStatus: true,
         technicianProfile: { select: { id: true } },
       },
@@ -47,6 +48,7 @@ export function authenticate(req, _res, next) {
         id: user.id,
         role: user.role,
         clientId: user.clientId ?? null,
+        companyId: user.companyId ?? null,
         technicianId: user.technicianProfile?.id ?? null,
       };
       return next();
