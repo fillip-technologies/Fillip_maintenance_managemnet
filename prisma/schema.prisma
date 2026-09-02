@@ -89,7 +89,9 @@ model Company {
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
 
-  clients Client[]
+  clients       Client[]
+  products      Product[]
+  productAudits ProductAudit[]
 
   @@map("companies")
 }
@@ -367,6 +369,8 @@ model User {
   dailyStatusLogs    DailyStatusLog[]     @relation("DailyLogLoggedBy")
   refreshTokens      RefreshToken[]
   deviceTokens       DeviceToken[]
+  addedProducts      Product[]            @relation("ProductAddedBy")
+  productAuditChanges ProductAudit[]      @relation("ProductAuditChangedBy")
 
   @@index([clientId])
   @@map("users")
@@ -400,4 +404,54 @@ model DeviceToken {
 
   @@index([userId])
   @@map("device_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Products / Inventory (scoped to a Company)
+// ---------------------------------------------------------------------------
+
+model Product {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  name             String    @db.VarChar(160)
+  category         String?   @db.VarChar(100)
+  serialNumber     String?   @map("serial_number") @db.VarChar(120)
+  // "units" = stock quantity of this product held in the company's inventory.
+  quantity         Int       @default(0)
+  unitPrice        Decimal?  @map("unit_price") @db.Decimal(12, 2)
+  purchaseDate     DateTime? @map("purchase_date") @db.Date
+  installationDate DateTime? @map("installation_date") @db.Date
+  imageUrl         String?   @map("image_url") @db.Text
+  addedById        String?   @map("added_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  addedBy   User?          @relation("ProductAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  auditLogs ProductAudit[]
+
+  @@index([companyId])
+  @@map("products")
+}
+
+// Immutable audit trail of inventory changes (created / deleted), visible to the
+// super admin regardless of who made the change. Keeps a name snapshot so a row
+// still reads meaningfully after its product is hard-deleted (productId → null).
+model ProductAudit {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String?  @map("product_id") @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  action      String   @db.VarChar(20) // created | deleted
+  productName String   @map("product_name") @db.VarChar(160)
+  changedById String?  @map("changed_by") @db.Uuid
+  details     Json?
+  changedAt   DateTime @default(now()) @map("changed_at")
+
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  changedBy User?    @relation("ProductAuditChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([productId])
+  @@map("product_audit")
 }
