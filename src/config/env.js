@@ -49,6 +49,26 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().optional(),
   // Private key often carries literal "\n" in .env — normalized at load time.
   FIREBASE_PRIVATE_KEY: z.string().optional(),
+
+  // --- Outbound email (SMTP) ---
+  // Used to email new users their login credentials. ALL OPTIONAL: when
+  // SMTP_USER/SMTP_PASS are unset the mailer degrades to a no-op (logs and
+  // skips), so the server still boots and user creation still succeeds without
+  // email configured. For Gmail: SMTP_USER = your address, SMTP_PASS = a 16-char
+  // App Password (NOT your normal password; requires 2FA enabled).
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'), // false = STARTTLS on 587; true = TLS on 465
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  // From header; defaults to SMTP_USER when unset.
+  MAIL_FROM: z.string().optional(),
+  APP_NAME: z.string().default('Fixly'),
+  // Base URL of the frontend, used in email copy (login link).
+  APP_URL: z.string().default('http://localhost:5173'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -3,6 +3,8 @@ import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
 import { userScopeWhere, combine } from '../../authz/scope.js';
+import { sendCredentialsEmail } from '../../lib/mailer.js';
+import { logger } from '../../config/logger.js';
 
 /**
  * Data-access + business logic for users. Controllers stay thin; all Prisma
@@ -66,7 +68,18 @@ export const userService = {
       data.clientId = caller.clientId;
     }
     const passwordHash = password ? await hashPassword(password) : null;
-    return prisma.user.create({ data: { ...data, passwordHash }, select: publicSelect });
+    const user = await prisma.user.create({ data: { ...data, passwordHash }, select: publicSelect });
+
+    // Email the new user their login credentials. Fire-and-forget: delivery must
+    // never block or fail account creation (the mailer swallows its own errors,
+    // and no-ops entirely when SMTP isn't configured). Only when a password was
+    // actually set — an invite without one has nothing to send.
+    if (password) {
+      sendCredentialsEmail({ to: user.email, name: user.name, email: user.email, password }).catch(
+        (err) => logger.error({ err, to: user.email }, 'Credential email dispatch error')
+      );
+    }
+    return user;
   },
 
   async update(id, data, caller) {
@@ -147,9 +160,9 @@ async function assertSingleSuperAdmin(exceptId) {
 }
 
 // Roles that only a super_admin may assign. A client_admin can create
-// zone_incharge, zone_staff, and client_admin users — but NOT technicians
-// (technician lifecycle is managed exclusively by super_admin).
-const SUPER_ADMIN_ONLY_ROLES = ['super_admin', 'technician'];
+// zone_incharge and zone_staff users — but NOT other client_admins, super_admins,
+// or technicians (client_admin and technician lifecycles are super_admin-only).
+const SUPER_ADMIN_ONLY_ROLES = ['super_admin', 'client_admin', 'technician'];
 
 function assertRoleAllowed(caller, targetRole) {
   if (!targetRole) return;

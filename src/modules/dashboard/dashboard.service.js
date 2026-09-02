@@ -65,6 +65,53 @@ export const dashboardService = {
   },
 
   /**
+   * Per-zone device health for a scope. Returns one row per zone that actually
+   * holds devices, with a status breakdown — the real data behind the client
+   * overview's zone distribution (which previously used fabricated values).
+   *
+   * Scope is enforced exactly like `summary` via `deviceScope`. A single
+   * groupBy over (zoneId, status) keeps it O(rows), no N+1. `retired` devices
+   * are excluded from the working set (mirrors the summary/overview counts).
+   */
+  async zoneBreakdown(query, authScope) {
+    const where = await deviceScope(query, authScope);
+
+    const groups = await prisma.device.groupBy({
+      by: ['zoneId', 'status'],
+      where: { ...where, status: { not: 'retired' } },
+      _count: { _all: true },
+    });
+
+    // Resolve names only for the zones that actually appeared.
+    const zoneIds = [...new Set(groups.map((g) => g.zoneId))];
+    const zones = zoneIds.length
+      ? await prisma.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(zones.map((z) => [z.id, z.name]));
+    const byZone = new Map();
+    for (const row of groups) {
+      if (!byZone.has(row.zoneId)) {
+        byZone.set(row.zoneId, {
+          zoneId: row.zoneId,
+          zoneName: nameById.get(row.zoneId) ?? 'Unknown',
+          total: 0,
+          working: 0,
+          faulty: 0,
+          underMaintenance: 0,
+        });
+      }
+      const bucket = byZone.get(row.zoneId);
+      const n = row._count._all;
+      bucket.total += n;
+      if (row.status === 'active') bucket.working += n;
+      else if (row.status === 'faulty') bucket.faulty += n;
+      else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
+    }
+
+    return { zones: [...byZone.values()].sort((a, b) => b.total - a.total) };
+  },
+
+  /**
    * Platform-wide super_admin overview. One aggregated call backing the whole
    * super_admin dashboard so the page never fans out into a dozen list reads.
    * Restricted to a platform-scoped identity (super_admin) — no client/zone

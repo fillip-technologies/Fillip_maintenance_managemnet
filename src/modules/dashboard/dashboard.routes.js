@@ -34,3 +34,13 @@ dashboardRouter.get(
     sendSuccess(res, await dashboardService.summary(req.validatedQuery, req.scope));
   })
 );
+
+// Per-zone device health for a scope (real data behind the overview's zone
+// distribution). Same scope contract as /summary.
+dashboardRouter.get(
+  '/zone-breakdown',
+  validate(summarySchema),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await dashboardService.zoneBreakdown(req.validatedQuery, req.scope));
+  })
+);
