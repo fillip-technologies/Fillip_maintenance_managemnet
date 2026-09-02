@@ -16,6 +16,16 @@ export const createTechnicianSchema = z.object({
   }),
 });
 
+// Provision a new technician end-to-end (creates the login user + profile).
+export const provisionTechnicianSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(1).max(120),
+    email: z.string().trim().toLowerCase().email().max(200),
+    password: z.string().min(8).max(128),
+    specialization: z.string().trim().max(100).optional(),
+  }),
+});
+
 export const updateTechnicianSchema = z.object({
   params: idParam,
   body: z.object({ specialization: z.string().trim().max(100).nullable() }),
