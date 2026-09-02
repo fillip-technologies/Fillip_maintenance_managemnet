@@ -198,8 +198,7 @@ model HardwareType {
   specFields Json     @map("spec_fields")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  devices         Device[]
-  issueCategories IssueCategory[]
+  devices Device[]
 
   @@map("hardware_types")
 }
@@ -254,7 +253,8 @@ model ProductCategory {
   lastSeq   Int      @default(0) @map("last_seq")
   createdAt DateTime @default(now()) @map("created_at")
 
-  devices Device[]
+  devices         Device[]
+  issueCategories IssueCategory[]
 
   @@map("product_categories")
 }
@@ -263,15 +263,19 @@ model ProductCategory {
 // Issue management (core state machine)
 // ---------------------------------------------------------------------------
 
+// Defect/issue categories for the "raise a defect" dropdown. Tied to the global
+// ProductCategory: `categoryId = null` means a GLOBAL category that applies to any
+// unit (e.g. "Not working", "Physical damage"); a set categoryId scopes it to one
+// product category (e.g. camera-specific faults).
 model IssueCategory {
-  id             String @id @default(uuid()) @db.Uuid
-  hardwareTypeId String @map("hardware_type_id") @db.Uuid
-  name           String @db.VarChar(100)
+  id         String  @id @default(uuid()) @db.Uuid
+  categoryId String? @map("category_id") @db.Uuid
+  name       String  @db.VarChar(100)
 
-  hardwareType HardwareType @relation(fields: [hardwareTypeId], references: [id], onDelete: Cascade)
-  issues       Issue[]
+  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  issues   Issue[]
 
-  @@index([hardwareTypeId])
+  @@index([categoryId])
   @@map("issue_categories")
 }
 

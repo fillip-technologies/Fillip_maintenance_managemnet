@@ -90,16 +90,22 @@ export const issueService = {
       include: { zone: { select: { clientId: true } } },
     });
     if (!device) throw ApiError.badRequest('Device does not exist');
+    // In-stock units (no zone) belong to a company, not a zone — a unit must be
+    // deployed before defects are raised against it in the field.
     assertInScope(
-      deviceInScope(scope, { zoneId: device.zoneId, clientId: device.zone?.clientId }),
-      'Cannot raise an issue on a device outside your scope'
+      device.zoneId
+        ? deviceInScope(scope, { zoneId: device.zoneId, clientId: device.zone?.clientId })
+        : (scope.platform || scope.companyIds?.includes(device.companyId)),
+      'Cannot raise a defect on a unit outside your scope'
     );
-    if (device.status === 'retired') throw ApiError.badRequest('Cannot raise an issue on a retired device');
+    if (device.status === 'retired') throw ApiError.badRequest('Cannot raise a defect on a retired unit');
 
     const category = await prisma.issueCategory.findUnique({ where: { id: categoryId } });
-    if (!category) throw ApiError.badRequest('Issue category does not exist');
-    if (device.hardwareTypeId && category.hardwareTypeId !== device.hardwareTypeId) {
-      throw ApiError.badRequest('Category does not belong to this device’s hardware type');
+    if (!category) throw ApiError.badRequest('Defect category does not exist');
+    // A defect category either applies globally (categoryId null) or is scoped to
+    // the unit's product category.
+    if (category.categoryId && category.categoryId !== device.categoryId) {
+      throw ApiError.badRequest('This defect category does not apply to this unit');
     }
 
     const issue = await prisma.$transaction(async (tx) => {
