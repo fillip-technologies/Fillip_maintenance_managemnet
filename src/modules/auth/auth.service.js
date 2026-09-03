@@ -60,6 +60,13 @@ export const authService = {
       ? await Promise.all([zoneService.descendants(zoneId), zoneService.ancestors(zoneId)])
       : [[], []];
 
+    // Include client/company name so the frontend can show it immediately.
+    let clientName = null;
+    if (user.clientId) {
+      const client = await prisma.client.findUnique({ where: { id: user.clientId }, select: { name: true } });
+      clientName = client?.name ?? null;
+    }
+
     return {
       ...tokens,
       user: {
@@ -67,6 +74,7 @@ export const authService = {
         name: user.name,
         role: user.role,
         clientId: user.clientId,
+        clientName,
         companyId: user.companyId ?? null,
         zoneId,
       },

@@ -56,3 +56,11 @@ export const assignSchema = z.object({
 export const unassignSchema = z.object({
   params: z.object({ id: z.string().uuid(), assignmentId: z.string().uuid() }),
 });
+
+export const activitySchema = z.object({
+  params: idParam,
+  query: paginationQuery.extend({
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+  }),
+});

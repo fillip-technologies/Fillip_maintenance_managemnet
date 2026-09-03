@@ -11,12 +11,14 @@ import {
   descendantsSchema,
   assignSchema,
   unassignSchema,
+  deleteZoneSchema,
+  activitySchema,
 } from './zone.validation.js';
 
 export const zoneRouter = Router();
 
-// Building the zone tree is an admin action; incharges manage status/assignments.
 const canCreate = requireRole('super_admin', 'client_admin');
+const canDelete = requireRole('super_admin');
 
 zoneRouter.get('/', validate(listZonesSchema), zoneController.list);
 zoneRouter.post('/', canCreate, validate(createZoneSchema), zoneController.create);
@@ -26,8 +28,10 @@ zoneRouter.patch('/:id', validate(updateZoneSchema), zoneController.update);
 // No hard delete — archive a zone via PATCH /:id/status → inactive so its
 // devices, issues, and history are preserved (spec §3.1).
 zoneRouter.patch('/:id/status', validate(setZoneStatusSchema), zoneController.setStatus);
+zoneRouter.delete('/:id', canDelete, validate(deleteZoneSchema), zoneController.remove);
 
 // Zone assignments (incharge / staff).
+zoneRouter.get('/:id/activity', validate(activitySchema), zoneController.activity);
 zoneRouter.get('/:id/assignments', validate(getZoneSchema), zoneController.listAssignments);
 zoneRouter.post('/:id/assign', validate(assignSchema), zoneController.assign);
 zoneRouter.delete('/:id/assignments/:assignmentId', validate(unassignSchema), zoneController.unassign);

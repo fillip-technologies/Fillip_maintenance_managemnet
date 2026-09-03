@@ -21,6 +21,14 @@ const publicSelect = {
   companyId: true,
   createdAt: true,
   updatedAt: true,
+  zoneAssignments: {
+    where: { unassignedAt: null },
+    select: {
+      id: true,
+      role: true,
+      zone: { select: { id: true, name: true } },
+    },
+  },
 };
 
 export const userService = {

@@ -139,12 +139,16 @@ export const zoneService = {
     const creatorId = user?.id ?? createdById;
     if (!creatorId) throw ApiError.badRequest('Creator could not be determined');
     assertInScope(clientInScope(scope, clientId), 'Cannot create a zone for a client outside your scope');
-    // A sub-zone must belong to the same client as its parent.
+    // A sub-zone must belong to the same client as its parent, and depth ≤ 5.
     if (parentZoneId) {
       const parent = await prisma.zone.findUnique({ where: { id: parentZoneId } });
       if (!parent) throw ApiError.badRequest('Parent zone does not exist');
       if (parent.clientId !== clientId) {
         throw ApiError.badRequest('Parent zone belongs to a different client');
+      }
+      const ancestors = await this.ancestors(parentZoneId);
+      if (ancestors.length >= 5) {
+        throw ApiError.badRequest('Maximum zone depth of 5 levels reached');
       }
     }
     await this.assertUniqueName(clientId, rest.name);
@@ -173,6 +177,47 @@ export const zoneService = {
       throw ApiError.badRequest(`Illegal zone transition: ${zone.status} → ${toStatus}`);
     }
     return prisma.zone.update({ where: { id }, data: { status: toStatus } });
+  },
+
+  async activity(id, { page, limit, from, to }, scope) {
+    await this.getByIdInScope(id, scope);
+    const zoneIds = await this.subtreeIds(id);
+    const dateFilter = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to)   dateFilter.lte = new Date(to);
+    const where = {
+      issue: { device: { zoneId: { in: zoneIds } } },
+      ...(Object.keys(dateFilter).length ? { changedAt: dateFilter } : {}),
+    };
+    const total = await prisma.issueStatusHistory.count({ where });
+    const { skip, take, meta } = paginate({ page, limit }, total);
+    const items = await prisma.issueStatusHistory.findMany({
+      where,
+      orderBy: { changedAt: 'desc' },
+      skip,
+      take,
+      include: {
+        changedBy: { select: { id: true, name: true, role: true } },
+        issue: {
+          select: {
+            id: true,
+            priority: true,
+            device: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    return { items, meta };
+  },
+
+  async remove(id, scope) {
+    const zone = await this.getByIdInScope(id, scope);
+    const childCount = await prisma.zone.count({ where: { parentZoneId: id } });
+    if (childCount > 0) {
+      throw ApiError.conflict('Delete sub-zones first before deleting this zone');
+    }
+    await prisma.zone.delete({ where: { id } });
+    return zone;
   },
 
   // --- Assignments ---

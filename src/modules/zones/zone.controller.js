@@ -29,6 +29,14 @@ export const zoneController = {
     await zoneService.unassign(req.params.id, req.params.assignmentId, req.scope);
     res.status(204).send();
   }),
+  activity: asyncHandler(async (req, res) => {
+    const result = await zoneService.activity(req.params.id, req.validatedQuery, req.scope);
+    sendSuccess(res, result);
+  }),
+  remove: asyncHandler(async (req, res) => {
+    await zoneService.remove(req.params.id, req.scope);
+    res.status(204).send();
+  }),
   listAssignments: asyncHandler(async (req, res) => {
     sendSuccess(res, await zoneService.listAssignments(req.params.id, req.scope));
   }),
