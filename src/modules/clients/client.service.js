@@ -27,8 +27,9 @@ export const clientService = {
     return client;
   },
 
-  create(data) {
-    return prisma.client.create({ data });
+  async create({ companyName, ...clientData }) {
+    const company = await prisma.company.create({ data: { name: companyName, status: 'active' } });
+    return prisma.client.create({ data: { ...clientData, name: companyName, companyId: company.id } });
   },
 
   async update(id, data) {
@@ -37,16 +38,27 @@ export const clientService = {
   },
 
   async remove(id) {
-    await this.getById(id);
-    // Refuse to delete while dependents exist — a cascade would wipe zones,
-    // devices, issues, and their history.
-    const [zones, users] = await Promise.all([
-      prisma.zone.count({ where: { clientId: id } }),
-      prisma.user.count({ where: { clientId: id } }),
-    ]);
-    if (zones > 0 || users > 0) {
-      throw ApiError.conflict('Cannot delete a client that still has zones or users');
+    const client = await this.getById(id);
+
+    // 1. Delete all devices in this client's zones (cascades issues + daily logs)
+    const zones = await prisma.zone.findMany({ where: { clientId: id }, select: { id: true } });
+    const zoneIds = zones.map((z) => z.id);
+    if (zoneIds.length) {
+      await prisma.device.deleteMany({ where: { zoneId: { in: zoneIds } } });
     }
-    await prisma.client.delete({ where: { id } });
+    // Also wipe any company-owned stock devices not yet deployed to a zone
+    if (client.companyId) {
+      await prisma.device.deleteMany({ where: { companyId: client.companyId, zoneId: null } });
+    }
+
+    // 2. Delete all users belonging to this client
+    await prisma.user.deleteMany({ where: { clientId: id } });
+
+    // 3. Delete the company — cascades: client → zones → zone_assignments → technician_assignments
+    if (client.companyId) {
+      await prisma.company.delete({ where: { id: client.companyId } });
+    } else {
+      await prisma.client.delete({ where: { id } });
+    }
   },
 };
