@@ -113,6 +113,13 @@ export function issueScopeWhere(scope) {
   const OR = [];
   if (scope.clientIds.length) OR.push({ device: { zone: { clientId: { in: scope.clientIds } } } });
   if (scope.zoneIds.length) OR.push({ device: { zoneId: { in: scope.zoneIds } } });
+  // Defects raised on in-stock units (no zone) are visible to the owning
+  // organization's head — mirrors deviceScopeWhere, which lets the org head both
+  // see and raise defects on its company-level (unzoned) inventory. Without this
+  // an org head could raise a defect on a stock unit but never see it listed.
+  if (scope.companyIds?.length) {
+    OR.push({ device: { AND: [{ zoneId: null }, { companyId: { in: scope.companyIds } }] } });
+  }
   return OR.length ? { OR } : MATCH_NONE;
 }
 

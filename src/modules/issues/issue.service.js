@@ -90,8 +90,6 @@ export const issueService = {
       include: { zone: { select: { clientId: true } } },
     });
     if (!device) throw ApiError.badRequest('Device does not exist');
-    // In-stock units (no zone) belong to a company, not a zone — a unit must be
-    // deployed before defects are raised against it in the field.
     assertInScope(
       device.zoneId
         ? deviceInScope(scope, { zoneId: device.zoneId, clientId: device.zone?.clientId })
@@ -102,21 +100,66 @@ export const issueService = {
 
     const category = await prisma.issueCategory.findUnique({ where: { id: categoryId } });
     if (!category) throw ApiError.badRequest('Defect category does not exist');
-    // A defect category either applies globally (categoryId null) or is scoped to
-    // the unit's product category.
     if (category.categoryId && category.categoryId !== device.categoryId) {
       throw ApiError.badRequest('This defect category does not apply to this unit');
     }
 
+    // Resolve the client for this device (needed for assignment lookup).
+    let clientId = device.zone?.clientId ?? null;
+    if (!clientId && device.companyId) {
+      // In-stock unit: find the client under this company (1:1 in practice).
+      const client = await prisma.client.findFirst({
+        where: { companyId: device.companyId },
+        select: { id: true },
+      });
+      clientId = client?.id ?? null;
+    }
+
+    // Find the best-matching technician assignment: zone-level wins over org-level.
+    let autoTechnicianId = null;
+    if (device.zoneId || clientId) {
+      const match = await prisma.technicianAssignment.findFirst({
+        where: {
+          OR: [
+            ...(device.zoneId ? [{ zoneId: device.zoneId }] : []),
+            ...(clientId ? [{ clientId, zoneId: null }] : []),
+          ],
+        },
+        orderBy: [
+          // Zone-specific assignments rank first (zoneId non-null → sorts after null).
+          { zoneId: 'desc' },
+          { id: 'asc' },
+        ],
+        select: { technicianId: true },
+      });
+      autoTechnicianId = match?.technicianId ?? null;
+    }
+
     const issue = await prisma.$transaction(async (tx) => {
       const created = await tx.issue.create({
-        data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open' },
+        data: {
+          deviceId, categoryId, raisedByUserId: raiserId, priority, description,
+          status: autoTechnicianId ? 'assigned' : 'open',
+          assignedTechnicianId: autoTechnicianId,
+        },
         include: detail,
       });
+      // Audit: open entry.
       await tx.issueStatusHistory.create({
         data: { issueId: created.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
       });
-      // Raising an issue puts the device under maintenance (section 3.2).
+      // If auto-assigned, record the open→assigned transition as well.
+      if (autoTechnicianId) {
+        await tx.issueStatusHistory.create({
+          data: {
+            issueId: created.id,
+            fromStatus: 'open',
+            toStatus: 'assigned',
+            changedByUserId: raiserId,
+            notes: 'Auto-assigned based on technician coverage',
+          },
+        });
+      }
       await refreshMaintenanceStatus(tx, deviceId);
       return created;
     }, TX_OPTS);

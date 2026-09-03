@@ -56,7 +56,7 @@ export const technicianService = {
    * user — and the credential email fires only after BOTH rows commit (unlike
    * the plain user-create path, which emails immediately).
    */
-  async provision({ name, email, password, specialization }) {
+  async provision({ name, email, password, specialization, clientId, zoneId }) {
     const normalizedEmail = email.toLowerCase().trim();
     const clash = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (clash) {
@@ -74,10 +74,17 @@ export const technicianService = {
           passwordHash,
         },
       });
-      return tx.technician.create({
+      const tech = await tx.technician.create({
         data: { userId: user.id, specialization: specialization ?? null },
         include: withUser,
       });
+      // Create the coverage assignment atomically if a scope was provided.
+      if (clientId || zoneId) {
+        await tx.technicianAssignment.create({
+          data: { technicianId: tech.id, clientId: clientId ?? null, zoneId: zoneId ?? null },
+        });
+      }
+      return tech;
     });
 
     // Fire-and-forget after commit — delivery must not fail the request, and the
