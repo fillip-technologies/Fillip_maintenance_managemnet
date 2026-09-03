@@ -9,6 +9,8 @@ export const listDevicesSchema = z.object({
     includeSubzones: z.enum(['true', 'false']).optional(),
     status: z.enum(['provisioned', 'active', 'under_maintenance', 'faulty', 'retired']).optional(),
     search: z.string().trim().min(1).optional(),
+    // Super-admin org filter: narrow the platform-wide list to one company.
+    companyId: z.string().uuid().optional(),
   }),
 });
 

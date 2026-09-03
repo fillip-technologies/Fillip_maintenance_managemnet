@@ -21,6 +21,7 @@ const withZone = {
   hardwareType: { select: { id: true, name: true } },
   category: { select: { id: true, name: true, code: true } },
   company: { select: { id: true, name: true } },
+  addedBy: { select: { id: true, name: true } },
 };
 
 /**
@@ -47,7 +48,7 @@ async function resolveUnitCompany(user, { companyId, zoneClientCompanyId }) {
 }
 
 export const deviceService = {
-  async list({ page, limit, zoneId, includeSubzones, status, search }, scope) {
+  async list({ page, limit, zoneId, includeSubzones, status, search, companyId }, scope) {
     // Optionally widen a zone filter to its whole subtree.
     let zoneFilter;
     if (zoneId && includeSubzones === 'true') {
@@ -60,6 +61,9 @@ export const deviceService = {
       ...(zoneFilter ? { zoneId: zoneFilter } : {}),
       ...(status ? { status } : {}),
       ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+      // Super-admin org filter: applied on top of the scope (platform scope = no
+      // restriction, so companyId is the only filter that narrows the result).
+      ...(companyId && scope.platform ? { companyId } : {}),
     };
     const where = combine(deviceScopeWhere(scope), filters);
     const total = await prisma.device.count({ where });
