@@ -44,11 +44,18 @@ export async function resolveScope(user) {
     if (scope.technicianId) {
       const coverage = await prisma.technicianAssignment.findMany({
         where: { technicianId: scope.technicianId },
-        select: { clientId: true, zoneId: true },
+        select: {
+          clientId: true,
+          zoneId: true,
+          client: { select: { companyId: true } },
+        },
       });
       scope.clientIds = unique(coverage.map((c) => c.clientId).filter(Boolean));
+      // Resolve company IDs so the technician can see in-stock units for their
+      // assigned orgs — mirrors the client_admin companyIds path.
+      scope.companyIds = unique(coverage.map((c) => c.client?.companyId).filter(Boolean));
       const roots = coverage.map((c) => c.zoneId).filter(Boolean);
-      scope.zoneIds = await expandZones(roots); // coverage cascades into sub-zones
+      scope.zoneIds = await expandZones(roots);
     }
     return scope;
   }
@@ -102,9 +109,14 @@ export function issueScopeWhere(scope) {
   // is already handling. `assignedTechnicianId: null` == open/never-assigned,
   // since a reopen keeps the technician attached.
   if (scope.technicianId) {
+    // Coverage = deployed units in their zones/clients + in-stock units for their orgs.
     const coverage = [];
     if (scope.clientIds.length) coverage.push({ device: { zone: { clientId: { in: scope.clientIds } } } });
-    if (scope.zoneIds.length) coverage.push({ device: { zoneId: { in: scope.zoneIds } } });
+    if (scope.zoneIds.length)   coverage.push({ device: { zoneId: { in: scope.zoneIds } } });
+    if (scope.companyIds?.length) {
+      coverage.push({ device: { AND: [{ zoneId: null }, { companyId: { in: scope.companyIds } }] } });
+    }
+    // A technician sees: issues assigned to them + open issues anywhere in their coverage.
     const OR = [{ assignedTechnicianId: scope.technicianId }];
     if (coverage.length) OR.push({ AND: [{ assignedTechnicianId: null }, { OR: coverage }] });
     return { OR };
@@ -112,7 +124,7 @@ export function issueScopeWhere(scope) {
 
   const OR = [];
   if (scope.clientIds.length) OR.push({ device: { zone: { clientId: { in: scope.clientIds } } } });
-  if (scope.zoneIds.length) OR.push({ device: { zoneId: { in: scope.zoneIds } } });
+  if (scope.zoneIds.length)   OR.push({ device: { zoneId: { in: scope.zoneIds } } });
   // Defects raised on in-stock units (no zone) are visible to the owning
   // organization's head — mirrors deviceScopeWhere, which lets the org head both
   // see and raise defects on its company-level (unzoned) inventory. Without this

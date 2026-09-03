@@ -37,9 +37,11 @@ export const issueService = {
       filters.raisedByUserId = user.id;
     }
     if (query.scope === 'technician') {
-      const technicianId = user?.technicianId;
-      if (!technicianId) throw ApiError.forbidden('Not a technician');
-      filters.assignedTechnicianId = technicianId;
+      // Validate the caller is a technician — the issueScopeWhere already scopes
+      // the results to their coverage (open issues) + their assigned issues.
+      // Do NOT add an extra assignedTechnicianId filter here: that would hide the
+      // open, unassigned issues a technician should be able to pick up.
+      if (!user?.technicianId) throw ApiError.forbidden('Not a technician');
     } else if (assignedTechnicianId) {
       filters.assignedTechnicianId = assignedTechnicianId;
     }
@@ -104,62 +106,17 @@ export const issueService = {
       throw ApiError.badRequest('This defect category does not apply to this unit');
     }
 
-    // Resolve the client for this device (needed for assignment lookup).
-    let clientId = device.zone?.clientId ?? null;
-    if (!clientId && device.companyId) {
-      // In-stock unit: find the client under this company (1:1 in practice).
-      const client = await prisma.client.findFirst({
-        where: { companyId: device.companyId },
-        select: { id: true },
-      });
-      clientId = client?.id ?? null;
-    }
-
-    // Find the best-matching technician assignment: zone-level wins over org-level.
-    let autoTechnicianId = null;
-    if (device.zoneId || clientId) {
-      const match = await prisma.technicianAssignment.findFirst({
-        where: {
-          OR: [
-            ...(device.zoneId ? [{ zoneId: device.zoneId }] : []),
-            ...(clientId ? [{ clientId, zoneId: null }] : []),
-          ],
-        },
-        orderBy: [
-          // Zone-specific assignments rank first (zoneId non-null → sorts after null).
-          { zoneId: 'desc' },
-          { id: 'asc' },
-        ],
-        select: { technicianId: true },
-      });
-      autoTechnicianId = match?.technicianId ?? null;
-    }
-
+    // Issue is always created as `open` — visible to all org members and every
+    // technician with coverage for this zone/org. No auto-assignment: technicians
+    // pick it up themselves by transitioning to in_progress.
     const issue = await prisma.$transaction(async (tx) => {
       const created = await tx.issue.create({
-        data: {
-          deviceId, categoryId, raisedByUserId: raiserId, priority, description,
-          status: autoTechnicianId ? 'assigned' : 'open',
-          assignedTechnicianId: autoTechnicianId,
-        },
+        data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open' },
         include: detail,
       });
-      // Audit: open entry.
       await tx.issueStatusHistory.create({
         data: { issueId: created.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
       });
-      // If auto-assigned, record the open→assigned transition as well.
-      if (autoTechnicianId) {
-        await tx.issueStatusHistory.create({
-          data: {
-            issueId: created.id,
-            fromStatus: 'open',
-            toStatus: 'assigned',
-            changedByUserId: raiserId,
-            notes: 'Auto-assigned based on technician coverage',
-          },
-        });
-      }
       await refreshMaintenanceStatus(tx, deviceId);
       return created;
     }, TX_OPTS);
@@ -172,12 +129,7 @@ export const issueService = {
     return prisma.issue.update({ where: { id }, data, include: detail });
   },
 
-  /** Assign (or reassign) a technician — moves open/reopened → assigned. */
-  async assign(id, { technicianId, notes, changedByUserId }, user, scope) {
-    return this.transition(id, { toStatus: 'assigned', assignedTechnicianId: technicianId, notes, changedByUserId }, user, scope);
-  },
-
-  async transition(id, { toStatus, assignedTechnicianId, notes, changedByUserId }, user, scope) {
+  async transition(id, { toStatus, notes, changedByUserId }, user, scope) {
     const changerId = user?.id ?? changedByUserId;
     if (!changerId) throw ApiError.badRequest('Changer could not be determined');
 
@@ -196,14 +148,10 @@ export const issueService = {
 
     const data = { status: toStatus };
 
-    if (toStatus === 'assigned') {
-      const technicianId = assignedTechnicianId ?? issue.assignedTechnicianId;
-      if (!technicianId) throw ApiError.badRequest('A technician must be assigned');
-      const tech = await prisma.technician.findUnique({ where: { id: technicianId } });
-      if (!tech) throw ApiError.badRequest('Technician does not exist');
-      data.assignedTechnicianId = technicianId;
-    } else if (assignedTechnicianId) {
-      data.assignedTechnicianId = assignedTechnicianId;
+    // When a technician picks up an open issue (open/assigned → in_progress),
+    // record them as the assignee. No separate "assign" step needed.
+    if (toStatus === 'in_progress' && user?.technicianId) {
+      data.assignedTechnicianId = user.technicianId;
     }
 
     if (toStatus === 'resolved') data.resolvedAt = new Date();

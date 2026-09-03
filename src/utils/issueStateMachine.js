@@ -5,13 +5,14 @@ import { ApiError } from './ApiError.js';
  * present here is rejected. `closed` is terminal.
  */
 export const ISSUE_TRANSITIONS = {
-  open: ['assigned'],
-  assigned: ['in_progress', 'on_hold'],
+  // Technicians pick up open issues directly — no separate "assign" step.
+  open:        ['in_progress', 'on_hold'],
+  assigned:    ['in_progress', 'on_hold'],  // kept for any existing assigned issues
   in_progress: ['resolved', 'on_hold'],
-  on_hold: ['in_progress'],
-  resolved: ['closed', 'reopened'],
-  closed: [],
-  reopened: ['assigned'],
+  on_hold:     ['in_progress'],
+  resolved:    ['closed', 'reopened'],
+  closed:      [],
+  reopened:    ['in_progress', 'on_hold'],
 };
 
 export const ISSUE_STATUSES = Object.keys(ISSUE_TRANSITIONS);
