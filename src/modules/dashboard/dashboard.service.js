@@ -46,10 +46,20 @@ export const dashboardService = {
     const where = await deviceScope(query, authScope);
     const today = todayUtc();
 
-    const [totalDevices, faultyDevices, underMaintenance, devicesMissingTodayLog, openIssues] = await Promise.all([
+    // Technician count scoped to the requested client/zone — technicians have
+    // clientId=null on their user row, so the /users list never includes them.
+    // Query technician_assignments directly to get the real assigned count.
+    const technicianAssignmentWhere =
+      query.scope === 'client' && query.id ? { clientId: query.id }
+      : query.scope === 'zone'   && query.id ? { zoneId:   query.id }
+      : undefined; // platform scope → count all
+
+    const [totalDevices, workingDevices, underMaintenance, faultyDevices, provisionedDevices, devicesMissingTodayLog, openIssues, onHoldIssues, assignedTechnicians] = await Promise.all([
       prisma.device.count({ where: { ...where, status: { not: 'retired' } } }),
-      prisma.device.count({ where: { ...where, status: 'faulty' } }),
+      prisma.device.count({ where: { ...where, status: 'active' } }),
       prisma.device.count({ where: { ...where, status: 'under_maintenance' } }),
+      prisma.device.count({ where: { ...where, status: 'faulty' } }),
+      prisma.device.count({ where: { ...where, status: 'provisioned' } }),
       prisma.device.count({
         where: {
           ...where,
@@ -60,9 +70,15 @@ export const dashboardService = {
       prisma.issue.count({
         where: { device: where, status: { in: OPEN_ISSUE_STATES } },
       }),
+      prisma.issue.count({
+        where: { device: where, status: 'on_hold' },
+      }),
+      technicianAssignmentWhere !== undefined
+        ? prisma.technicianAssignment.count({ where: technicianAssignmentWhere })
+        : prisma.technician.count(),
     ]);
 
-    return { openIssues, faultyDevices, underMaintenance, devicesMissingTodayLog, totalDevices };
+    return { openIssues, onHoldIssues, workingDevices, faultyDevices, underMaintenance, provisionedDevices, devicesMissingTodayLog, totalDevices, assignedTechnicians };
   },
 
   /**
