@@ -67,3 +67,13 @@ export const assignIssueSchema = z.object({
     changedByUserId: z.string().uuid().optional(),
   }),
 });
+
+export const createBulkIssueSchema = z.object({
+  body: z.object({
+    deviceIds:   z.array(z.string().uuid()).min(1).max(50),
+    categoryId:  z.string().uuid(),
+    raisedByUserId: z.string().uuid().optional(),
+    priority:    priority.default('medium'),
+    description: z.string().trim().min(1),
+  }),
+});

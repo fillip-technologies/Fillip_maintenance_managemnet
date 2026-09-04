@@ -6,6 +6,7 @@ import {
   listIssuesSchema,
   getIssueSchema,
   createIssueSchema,
+  createBulkIssueSchema,
   updateIssueSchema,
   transitionIssueSchema,
   assignIssueSchema,
@@ -15,6 +16,7 @@ export const issueRouter = Router();
 
 issueRouter.get('/', validate(listIssuesSchema), issueController.list);
 issueRouter.post('/', validate(createIssueSchema), issueController.create);
+issueRouter.post('/bulk', validate(createBulkIssueSchema), issueController.bulkCreate);
 issueRouter.get('/:id', validate(getIssueSchema), issueController.get);
 issueRouter.patch('/:id', validate(updateIssueSchema), issueController.update);
 issueRouter.get('/:id/history', validate(getIssueSchema), issueController.history);

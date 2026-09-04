@@ -200,6 +200,58 @@ export const issueService = {
       include: { changedBy: { select: { id: true, name: true } } },
     });
   },
+
+  async createBulk({ deviceIds, categoryId, raisedByUserId, priority, description }, user, scope) {
+    const raiserId = user?.id ?? raisedByUserId;
+    if (!raiserId) throw ApiError.badRequest('Raiser could not be determined');
+
+    // Validate category once — same rules as single create.
+    const category = await prisma.issueCategory.findUnique({ where: { id: categoryId } });
+    if (!category) throw ApiError.badRequest('Defect category does not exist');
+
+    // Validate every device up front before touching the DB.
+    const devices = await prisma.device.findMany({
+      where: { id: { in: deviceIds } },
+      include: { zone: { select: { clientId: true } } },
+    });
+
+    const deviceMap = new Map(devices.map((d) => [d.id, d]));
+    for (const id of deviceIds) {
+      const device = deviceMap.get(id);
+      if (!device) throw ApiError.badRequest(`Device ${id} does not exist`);
+      assertInScope(
+        device.zoneId
+          ? deviceInScope(scope, { zoneId: device.zoneId, clientId: device.zone?.clientId })
+          : (scope.platform || scope.companyIds?.includes(device.companyId)),
+        'Cannot raise a defect on a unit outside your scope'
+      );
+      if (device.status === 'retired') throw ApiError.badRequest(`Cannot raise a defect on a retired unit (${id})`);
+      if (category.categoryId && category.categoryId !== device.categoryId) {
+        throw ApiError.badRequest(`Defect category does not apply to unit ${id}`);
+      }
+    }
+
+    const issues = await prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const deviceId of deviceIds) {
+        const issue = await tx.issue.create({
+          data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open' },
+          include: detail,
+        });
+        await tx.issueStatusHistory.create({
+          data: { issueId: issue.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
+        });
+        await refreshMaintenanceStatus(tx, deviceId);
+        created.push(issue);
+      }
+      return created;
+    }, TX_OPTS);
+
+    for (const issue of issues) {
+      emitIssueEvent(DOMAIN_EVENT.ISSUE_CREATED, issue);
+    }
+    return issues;
+  },
 };
 
 // Local helper mirroring assertIssueTransition but returning a boolean so the

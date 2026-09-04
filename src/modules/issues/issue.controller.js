@@ -13,6 +13,9 @@ export const issueController = {
   create: asyncHandler(async (req, res) => {
     sendCreated(res, await issueService.create(req.body, req.user, req.scope));
   }),
+  bulkCreate: asyncHandler(async (req, res) => {
+    sendCreated(res, await issueService.createBulk(req.body, req.user, req.scope));
+  }),
   update: asyncHandler(async (req, res) => {
     sendSuccess(res, await issueService.updateDetails(req.params.id, req.body, req.scope));
   }),
