@@ -56,6 +56,12 @@ const envSchema = z.object({
   // Private key often carries literal "\n" in .env — normalized at load time.
   FIREBASE_PRIVATE_KEY: z.string().optional(),
 
+  // --- Cloudinary (image / video attachments on issues) ---
+  // ALL OPTIONAL: when unset the upload middleware degrades to a no-op.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY:    z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+
   // --- Outbound email (SMTP) ---
   // Used to email new users their login credentials. ALL OPTIONAL: when
   // SMTP_USER/SMTP_PASS are unset the mailer degrades to a no-op (logs and

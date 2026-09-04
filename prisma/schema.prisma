@@ -288,6 +288,8 @@ model Issue {
   priority             IssuePriority @default(medium)
   status               IssueStatus   @default(open)
   description          String        @db.Text
+  // Array of {url,publicId,type,filename,uploadedAt} stored from Cloudinary uploads.
+  attachments          Json          @default("[]") @map("attachments")
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
   resolvedAt           DateTime?     @map("resolved_at")

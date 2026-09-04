@@ -1,6 +1,7 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess, sendCreated, listPayload } from '../../utils/response.js';
 import { issueService } from './issue.service.js';
+import { uploadRequestFiles } from '../../middleware/upload.js';
 
 export const issueController = {
   list: asyncHandler(async (req, res) => {
@@ -11,10 +12,12 @@ export const issueController = {
     sendSuccess(res, await issueService.getById(req.params.id, req.scope));
   }),
   create: asyncHandler(async (req, res) => {
-    sendCreated(res, await issueService.create(req.body, req.user, req.scope));
+    const attachments = await uploadRequestFiles(req);
+    sendCreated(res, await issueService.create({ ...req.body, attachments }, req.user, req.scope));
   }),
   bulkCreate: asyncHandler(async (req, res) => {
-    sendCreated(res, await issueService.createBulk(req.body, req.user, req.scope));
+    const attachments = await uploadRequestFiles(req);
+    sendCreated(res, await issueService.createBulk({ ...req.body, attachments }, req.user, req.scope));
   }),
   bulkStatus: asyncHandler(async (req, res) => {
     sendSuccess(res, await issueService.bulkTransition(req.body, req.user, req.scope));
@@ -24,7 +27,13 @@ export const issueController = {
   }),
   setStatus: asyncHandler(async (req, res) => {
     const { status, notes, changedByUserId } = req.body;
-    sendSuccess(res, await issueService.transition(req.params.id, { toStatus: status, notes, changedByUserId }, req.user, req.scope));
+    const attachments = await uploadRequestFiles(req);
+    sendSuccess(res, await issueService.transition(
+      req.params.id,
+      { toStatus: status, notes, changedByUserId, attachments },
+      req.user,
+      req.scope
+    ));
   }),
   assign: asyncHandler(async (req, res) => {
     sendSuccess(res, await issueService.assign(req.params.id, req.body, req.user, req.scope));

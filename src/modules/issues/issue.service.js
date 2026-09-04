@@ -12,7 +12,15 @@ import { issueScopeWhere, combine, deviceInScope, assertInScope } from '../../au
 const TX_OPTS = { maxWait: 10_000, timeout: 20_000 };
 
 const detail = {
-  device: { select: { id: true, name: true, zoneId: true, hardwareTypeId: true } },
+  device: {
+    select: {
+      id: true,
+      name: true,
+      zoneId: true,
+      hardwareTypeId: true,
+      zone: { select: { id: true, name: true } },
+    },
+  },
   category: { select: { id: true, name: true } },
   raisedBy: { select: { id: true, name: true, email: true } },
   assignedTechnician: {
@@ -92,7 +100,7 @@ export const issueService = {
     return issue;
   },
 
-  async create({ deviceId, categoryId, raisedByUserId, priority, description }, user, scope) {
+  async create({ deviceId, categoryId, raisedByUserId, priority, description, attachments = [] }, user, scope) {
     const raiserId = user?.id ?? raisedByUserId;
     if (!raiserId) throw ApiError.badRequest('Raiser could not be determined');
 
@@ -120,7 +128,7 @@ export const issueService = {
     // pick it up themselves by transitioning to in_progress.
     const issue = await prisma.$transaction(async (tx) => {
       const created = await tx.issue.create({
-        data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open' },
+        data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open', attachments },
         include: detail,
       });
       await tx.issueStatusHistory.create({
@@ -138,7 +146,7 @@ export const issueService = {
     return prisma.issue.update({ where: { id }, data, include: detail });
   },
 
-  async transition(id, { toStatus, notes, changedByUserId }, user, scope) {
+  async transition(id, { toStatus, notes, changedByUserId, attachments = [] }, user, scope) {
     const changerId = user?.id ?? changedByUserId;
     if (!changerId) throw ApiError.badRequest('Changer could not be determined');
 
@@ -164,7 +172,12 @@ export const issueService = {
       );
     }
 
-    const data = { status: toStatus };
+    // Append new attachments to any previously stored ones.
+    const existing = Array.isArray(issue.attachments) ? issue.attachments : [];
+    const data = {
+      status: toStatus,
+      ...(attachments.length > 0 ? { attachments: [...existing, ...attachments] } : {}),
+    };
 
     // When a technician picks up an open issue (open/assigned → in_progress),
     // record them as the assignee. No separate "assign" step needed.
@@ -220,7 +233,7 @@ export const issueService = {
     return { updated: results, errors };
   },
 
-  async createBulk({ deviceIds, categoryId, raisedByUserId, priority, description }, user, scope) {
+  async createBulk({ deviceIds, categoryId, raisedByUserId, priority, description, attachments = [] }, user, scope) {
     const raiserId = user?.id ?? raisedByUserId;
     if (!raiserId) throw ApiError.badRequest('Raiser could not be determined');
 
@@ -254,7 +267,7 @@ export const issueService = {
       const created = [];
       for (const deviceId of deviceIds) {
         const issue = await tx.issue.create({
-          data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open' },
+          data: { deviceId, categoryId, raisedByUserId: raiserId, priority, description, status: 'open', attachments },
           include: detail,
         });
         await tx.issueStatusHistory.create({
