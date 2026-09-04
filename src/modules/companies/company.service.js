@@ -33,13 +33,19 @@ export const companyService = {
 
   async remove(id) {
     await this.getById(id);
-    // Refuse to delete while dependents exist — a cascade would wipe clients,
-    // zones, devices, issues, and their history. (Users attach to a client, not
-    // a company directly, so the client guard already covers them.)
-    const clients = await prisma.client.count({ where: { companyId: id } });
-    if (clients > 0) {
-      throw ApiError.conflict('Cannot delete a company that still has clients');
+
+    // Delete all clients under this org (and their cascades: zones,
+    // zone_assignments, client_verticals, technician_assignments).
+    // Users are SetNull by schema so we delete them explicitly first.
+    const clients = await prisma.client.findMany({
+      where: { companyId: id },
+      select: { id: true },
+    });
+    for (const client of clients) {
+      await prisma.user.deleteMany({ where: { clientId: client.id } });
+      await prisma.client.delete({ where: { id: client.id } });
     }
+
     await prisma.company.delete({ where: { id } });
   },
 };

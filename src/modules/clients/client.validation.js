@@ -14,7 +14,8 @@ export const getClientSchema = z.object({ params: idParam });
 
 export const createClientSchema = z.object({
   body: z.object({
-    companyName: z.string().trim().min(1).max(160),
+    companyId: z.string().uuid(),
+    name: z.string().trim().min(1).max(160),
     type: z.string().trim().max(60).optional(),
     location: z.string().trim().max(200).optional(),
   }),

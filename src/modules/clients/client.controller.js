@@ -20,4 +20,16 @@ export const clientController = {
     await clientService.remove(req.params.id);
     res.status(204).send();
   }),
+
+  dependents: asyncHandler(async (req, res) => {
+    sendSuccess(res, await clientService.getDependents(req.params.id));
+  }),
+
+  export: asyncHandler(async (req, res) => {
+    const { buffer, clientName } = await clientService.exportData(req.params.id);
+    const filename = `client-${clientName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-export.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  }),
 };
