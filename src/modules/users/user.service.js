@@ -5,6 +5,7 @@ import { hashPassword } from '../../utils/password.js';
 import { userScopeWhere, combine } from '../../authz/scope.js';
 import { sendCredentialsEmail } from '../../lib/mailer.js';
 import { logger } from '../../config/logger.js';
+import { evictUserCache } from '../../middleware/authenticate.js';
 
 /**
  * Data-access + business logic for users. Controllers stay thin; all Prisma
@@ -141,6 +142,19 @@ export const userService = {
     // are all `onDelete: SetNull`). Refresh/device tokens, zone assignments and any
     // technician profile cascade-delete; assigned issues' technician goes null.
     await prisma.user.delete({ where: { id } });
+    evictUserCache(id);
+  },
+
+  async suspend(id, caller) {
+    const target = await this.getById(id);
+    assertCanManage(caller, target);
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { accountStatus: 'suspended' },
+      select: publicSelect,
+    });
+    evictUserCache(id);
+    return updated;
   },
 };
 

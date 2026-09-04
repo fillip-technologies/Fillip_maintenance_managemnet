@@ -16,13 +16,19 @@ const envSchema = z.object({
     .default('info'),
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(500),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5000),
 
   // --- Auth (JWT access + refresh) ---
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 chars'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 chars'),
-  ACCESS_TOKEN_TTL: z.string().default('15m'),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  ACCESS_TOKEN_TTL: z.string().default('7d'),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
+
+  // --- Prisma connection pool ---
+  // Raise pool_timeout beyond the 10s default so that bursts of parallel queries
+  // (e.g. the 23-query overview) queue safely instead of throwing "Database request error".
+  PRISMA_POOL_SIZE: z.coerce.number().int().positive().default(5),
+  PRISMA_POOL_TIMEOUT: z.coerce.number().int().positive().default(30),
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(10),
 
   // --- Maintenance domain business rules (the "lock-in" decisions) ---

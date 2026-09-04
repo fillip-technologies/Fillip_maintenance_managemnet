@@ -26,4 +26,7 @@ export const issueController = {
   history: asyncHandler(async (req, res) => {
     sendSuccess(res, await issueService.history(req.params.id, req.scope));
   }),
+  remove: asyncHandler(async (req, res) => {
+    sendSuccess(res, await issueService.remove(req.params.id, req.scope));
+  }),
 };

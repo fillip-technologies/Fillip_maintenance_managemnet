@@ -21,3 +21,5 @@ issueRouter.get('/:id/history', validate(getIssueSchema), issueController.histor
 issueRouter.patch('/:id/status', validate(transitionIssueSchema), issueController.setStatus);
 // Only super_admin can assign technicians to issues (work assignment).
 issueRouter.patch('/:id/assign', requireRole('super_admin'), validate(assignIssueSchema), issueController.assign);
+// client_admin and super_admin can delete issues.
+issueRouter.delete('/:id', requireRole('super_admin', 'client_admin'), validate(getIssueSchema), issueController.remove);

@@ -67,6 +67,15 @@ export const issueService = {
     return { items, meta };
   },
 
+  async remove(id, scope) {
+    const issue = await prisma.issue.findFirst({
+      where: combine(issueScopeWhere(scope), { id }),
+    });
+    if (!issue) throw ApiError.notFound('Issue not found');
+    await prisma.issue.delete({ where: { id } });
+    return issue;
+  },
+
   // Scoped fetch — 404 if the issue is outside the caller's scope.
   async getById(id, scope) {
     const issue = await prisma.issue.findFirst({

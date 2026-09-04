@@ -18,6 +18,10 @@ const PLATFORM_ROOM = 'platform:all';
 export function initRealtime(httpServer) {
   const io = new Server(httpServer, {
     cors: { origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(',').map((o) => o.trim()) },
+    // Give slow Neon connections more time before declaring a client dead.
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 45000,
   });
 
   io.use((socket, next) => {
@@ -60,7 +64,11 @@ export function initRealtime(httpServer) {
         });
       }
     } catch (err) {
-      logger.error({ err }, 'Socket room join failed');
+      logger.error({ err }, 'Socket room join failed — disconnecting client');
+      // Force a clean disconnect so the client retries (with backoff) rather than
+      // sitting connected with no rooms and missing all events.
+      socket.emit('error', { code: 'ROOM_JOIN_FAILED', message: 'Server error; reconnecting…' });
+      socket.disconnect(true);
     }
   });
 
