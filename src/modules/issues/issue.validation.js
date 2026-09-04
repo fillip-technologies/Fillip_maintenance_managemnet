@@ -77,3 +77,11 @@ export const createBulkIssueSchema = z.object({
     description: z.string().trim().min(1),
   }),
 });
+
+export const bulkStatusSchema = z.object({
+  body: z.object({
+    ids:   z.array(z.string().uuid()).min(1).max(50),
+    status,
+    notes: z.string().trim().optional(),
+  }),
+});

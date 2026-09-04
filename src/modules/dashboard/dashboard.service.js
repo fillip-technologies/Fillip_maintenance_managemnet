@@ -46,9 +46,10 @@ export const dashboardService = {
     const where = await deviceScope(query, authScope);
     const today = todayUtc();
 
-    const [totalDevices, faultyDevices, devicesMissingTodayLog, openIssues] = await Promise.all([
+    const [totalDevices, faultyDevices, underMaintenance, devicesMissingTodayLog, openIssues] = await Promise.all([
       prisma.device.count({ where: { ...where, status: { not: 'retired' } } }),
       prisma.device.count({ where: { ...where, status: 'faulty' } }),
+      prisma.device.count({ where: { ...where, status: 'under_maintenance' } }),
       prisma.device.count({
         where: {
           ...where,
@@ -61,7 +62,7 @@ export const dashboardService = {
       }),
     ]);
 
-    return { openIssues, faultyDevices, devicesMissingTodayLog, totalDevices };
+    return { openIssues, faultyDevices, underMaintenance, devicesMissingTodayLog, totalDevices };
   },
 
   /**

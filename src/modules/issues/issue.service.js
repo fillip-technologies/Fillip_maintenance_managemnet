@@ -201,6 +201,25 @@ export const issueService = {
     });
   },
 
+  async bulkTransition({ ids, status: toStatus, notes }, user, scope) {
+    const changerId = user?.id;
+    if (!changerId) throw ApiError.badRequest('Changer could not be determined');
+
+    const results = [];
+    const errors  = [];
+
+    for (const id of ids) {
+      try {
+        const updated = await this.transition(id, { toStatus, notes, changedByUserId: changerId }, user, scope);
+        results.push(updated);
+      } catch (err) {
+        errors.push({ id, message: err.message });
+      }
+    }
+
+    return { updated: results, errors };
+  },
+
   async createBulk({ deviceIds, categoryId, raisedByUserId, priority, description }, user, scope) {
     const raiserId = user?.id ?? raisedByUserId;
     if (!raiserId) throw ApiError.badRequest('Raiser could not be determined');
