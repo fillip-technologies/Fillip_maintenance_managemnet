@@ -59,3 +59,20 @@ issueCategoryRouter.post(
     sendCreated(res, created);
   })
 );
+
+issueCategoryRouter.delete(
+  '/:id',
+  requireRole('super_admin'),
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const cat = await prisma.issueCategory.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { issues: true } } },
+    });
+    if (!cat) throw ApiError.notFound('Defect category not found');
+    if (cat._count.issues > 0)
+      throw ApiError.badRequest(`Cannot delete — ${cat._count.issues} issue(s) reference this category`);
+    await prisma.issueCategory.delete({ where: { id } });
+    sendSuccess(res, null);
+  })
+);
