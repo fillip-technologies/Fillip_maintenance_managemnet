@@ -203,6 +203,7 @@ export async function refreshMaintenanceStatus(tx, deviceId) {
   if (openCount > 0 && device.status !== 'under_maintenance') {
     await tx.device.update({ where: { id: deviceId }, data: { status: 'under_maintenance' } });
   } else if (openCount === 0 && (device.status === 'under_maintenance' || device.status === 'faulty')) {
+    // No open issues → device is working again regardless of what flagged it.
     await tx.device.update({ where: { id: deviceId }, data: { status: 'active' } });
   }
 }

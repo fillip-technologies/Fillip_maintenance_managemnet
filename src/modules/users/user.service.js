@@ -124,7 +124,11 @@ export const userService = {
     ) {
       throw ApiError.forbidden('You cannot reassign a user to another client');
     }
-    return prisma.user.update({ where: { id }, data, select: publicSelect });
+    const updated = await prisma.user.update({ where: { id }, data, select: publicSelect });
+    // Role, clientId, or accountStatus may have changed — evict so the next
+    // request picks up the new profile from the DB instead of the 30s cache.
+    evictUserCache(id);
+    return updated;
   },
 
   async remove(id, caller) {

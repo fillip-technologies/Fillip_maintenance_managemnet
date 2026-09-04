@@ -1,18 +1,21 @@
 import { ApiError } from './ApiError.js';
 
+// All statuses a non-closed issue can transition INTO.
+const ANY_OPEN = ['open', 'assigned', 'in_progress', 'on_hold', 'resolved', 'reopened', 'closed'];
+
 /**
- * Allowed issue status transitions (section 3.3 of the spec). A transition not
- * present here is rejected. `closed` is terminal.
+ * Allowed issue status transitions. Any non-closed issue may move to any other
+ * status so operators can correct mistakes or skip steps. `closed` is the only
+ * terminal state — once closed an issue cannot be re-opened.
  */
 export const ISSUE_TRANSITIONS = {
-  // Technicians pick up open issues directly — no separate "assign" step.
-  open:        ['in_progress', 'on_hold'],
-  assigned:    ['in_progress', 'on_hold'],  // kept for any existing assigned issues
-  in_progress: ['resolved', 'on_hold'],
-  on_hold:     ['in_progress'],
-  resolved:    ['closed', 'reopened'],
-  closed:      [],
-  reopened:    ['in_progress', 'on_hold'],
+  open:        ANY_OPEN,
+  assigned:    ANY_OPEN,
+  in_progress: ANY_OPEN,
+  on_hold:     ANY_OPEN,
+  resolved:    ANY_OPEN,
+  reopened:    ANY_OPEN,
+  closed:      [],   // terminal
 };
 
 export const ISSUE_STATUSES = Object.keys(ISSUE_TRANSITIONS);
@@ -29,15 +32,15 @@ export function assertIssueTransition(from, to) {
 }
 
 /**
- * A device is "occupied" (→ under_maintenance) while it has any issue that is
- * not yet `closed`. It only returns to `active` once every issue is closed
- * (section 3.2: active when "an issue is resolved and closed").
+ * A device is "occupied" (→ under_maintenance) while it has any actively
+ * worked issue. `resolved` is NOT included: the work is done, so the device
+ * returns to `active` immediately on resolve. Only `reopened` puts it back.
+ * `closed` is terminal and never re-occupies a device.
  */
 export const OPEN_ISSUE_STATES = [
   'open',
   'assigned',
   'in_progress',
   'on_hold',
-  'resolved',
   'reopened',
 ];

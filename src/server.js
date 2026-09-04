@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './lib/prisma.js';
+import { OPEN_ISSUE_STATES } from './utils/issueStateMachine.js';
 import { initRealtime } from './realtime/socket.js';
 import { initPush } from './push/provider.js';
 import { initPushNotifier } from './push/notifier.js';
@@ -10,6 +11,30 @@ const app = createApp();
 
 const server = app.listen(env.PORT, () => {
   logger.info(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);
+});
+
+// Repair stale under_maintenance devices after the server is fully ready.
+// Runs after initRealtime/initPush so socket rooms exist before any broadcast,
+// and deferred by one tick so the listen callback completes first.
+setImmediate(async () => {
+  try {
+    const stale = await prisma.device.findMany({
+      where: {
+        status: 'under_maintenance',
+        issues: { none: { status: { in: OPEN_ISSUE_STATES } } },
+      },
+      select: { id: true },
+    });
+    if (stale.length > 0) {
+      await prisma.device.updateMany({
+        where: { id: { in: stale.map((d) => d.id) } },
+        data: { status: 'active' },
+      });
+      logger.info({ count: stale.length }, 'Repaired stale under_maintenance devices on startup');
+    }
+  } catch (err) {
+    logger.error({ err }, 'Startup device-status repair failed — continuing');
+  }
 });
 
 // Attach Socket.IO to the same HTTP server.

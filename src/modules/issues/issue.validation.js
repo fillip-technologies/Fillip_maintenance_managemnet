@@ -53,8 +53,7 @@ export const updateIssueSchema = z.object({
 export const transitionIssueSchema = z.object({
   params: idParam,
   body: z.object({
-    // `open` is only the creation state — it can't be transitioned to.
-    status: status.exclude(['open']),
+    status,
     notes: z.string().trim().optional(),
     changedByUserId: z.string().uuid().optional(),
   }),

@@ -8,6 +8,15 @@ import { prisma } from '../lib/prisma.js';
 const _userCache = new Map();
 const CACHE_TTL_MS = 30_000;
 
+// Sweep expired entries every 5 minutes so the Map doesn't grow unbounded
+// on a server that handles many unique users over a long uptime.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of _userCache) {
+    if (now > val.exp) _userCache.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
+
 function getCachedUser(sub) {
   const hit = _userCache.get(sub);
   if (!hit) return null;

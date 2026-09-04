@@ -147,9 +147,18 @@ export const issueService = {
     const issue = await prisma.issue.findFirst({ where: combine(issueScopeWhere(scope), { id }) });
     if (!issue) throw ApiError.notFound('Issue not found');
 
+    // Block no-op transitions — they'd create a spurious history row.
+    if (issue.status === toStatus) {
+      throw ApiError.badRequest(
+        `Issue is already '${toStatus}'`,
+        undefined,
+        'INVALID_TRANSITION'
+      );
+    }
+
     if (!isTransitionAllowed(issue.status, toStatus)) {
       throw ApiError.badRequest(
-        `Cannot move from '${issue.status}' to '${toStatus}' directly`,
+        `Cannot move from '${issue.status}' to '${toStatus}'`,
         undefined,
         'INVALID_TRANSITION'
       );
@@ -165,7 +174,8 @@ export const issueService = {
 
     if (toStatus === 'resolved') data.resolvedAt = new Date();
     if (toStatus === 'closed') data.closedAt = new Date();
-    if (toStatus === 'reopened') {
+    // Any transition that moves away from resolved/closed clears those timestamps.
+    if (['open', 'assigned', 'in_progress', 'on_hold', 'reopened'].includes(toStatus)) {
       data.resolvedAt = null;
       data.closedAt = null;
     }
