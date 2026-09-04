@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import admin from 'firebase-admin';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
@@ -46,7 +47,7 @@ export function initPush() {
       resolvedConfigError = new Error('unconfigured');
       return null;
     }
-    app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    app = getApps().length ? getApps()[0] : initializeApp({ credential: cert(serviceAccount) });
     logger.info('Push (FCM) initialized');
     return app;
   } catch (err) {
@@ -81,7 +82,7 @@ export async function sendToTokens(tokens, { title, body, data }) {
     Object.entries(data ?? {}).map(([k, v]) => [k, String(v)])
   );
 
-  const res = await admin.messaging().sendEachForMulticast({
+  const res = await getMessaging().sendEachForMulticast({
     tokens: unique,
     notification: { title, body },
     data: stringData,
