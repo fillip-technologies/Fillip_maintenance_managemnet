@@ -32,7 +32,13 @@ export const technicianService = {
         assignments: {
           include: {
             client: { select: { id: true, name: true } },
-            zone: { select: { id: true, name: true } },
+            zone: {
+              select: {
+                id: true,
+                name: true,
+                client: { select: { id: true, name: true } },
+              },
+            },
           },
         },
       },
@@ -116,8 +122,71 @@ export const technicianService = {
   // --- Coverage assignments ---
 
   async addAssignment(technicianId, { clientId, zoneId }) {
-    await this.getById(technicianId);
-    return prisma.technicianAssignment.create({ data: { technicianId, clientId, zoneId } });
+    const tech = await this.getById(technicianId);
+    const existing = tech.assignments;
+
+    if (clientId) {
+      if (existing.some((a) => a.clientId === clientId)) {
+        throw ApiError.conflict(
+          'This technician is already assigned to this organization.',
+          undefined,
+          'DUPLICATE_ASSIGNMENT'
+        );
+      }
+    }
+
+    if (zoneId) {
+      if (existing.some((a) => a.zoneId === zoneId)) {
+        throw ApiError.conflict(
+          'This technician is already assigned to this zone.',
+          undefined,
+          'DUPLICATE_ASSIGNMENT'
+        );
+      }
+
+      const zone = await prisma.zone.findUnique({ where: { id: zoneId }, select: { clientId: true } });
+      if (!zone) throw ApiError.badRequest('Zone not found');
+
+      // Block if org-level coverage already covers this zone (org is higher = already covers it).
+      if (existing.some((a) => a.clientId === zone.clientId)) {
+        throw ApiError.conflict(
+          'This technician already has organization-level coverage for the client this zone belongs to. Cannot assign to a lower unit.',
+          undefined,
+          'COVERED_BY_ORG'
+        );
+      }
+
+      // Block if any existing zone assignment is an ancestor of the new zone
+      // (new zone is a descendant = lower unit of an existing assignment).
+      const existingZoneIds = existing.filter((a) => a.zoneId).map((a) => a.zoneId);
+      if (existingZoneIds.length > 0) {
+        // Walk the new zone's ancestor chain and check for overlap.
+        const ancestors = await prisma.$queryRaw`
+          WITH RECURSIVE up AS (
+            SELECT id, parent_zone_id FROM zones WHERE id = ${zoneId}::uuid
+            UNION ALL
+            SELECT z.id, z.parent_zone_id FROM zones z JOIN up u ON z.id = u.parent_zone_id
+          )
+          SELECT id::text FROM up WHERE id != ${zoneId}::uuid
+        `;
+        const ancestorIds = ancestors.map((r) => r.id);
+        if (existingZoneIds.some((id) => ancestorIds.includes(id))) {
+          throw ApiError.conflict(
+            'This technician is already assigned to a parent zone that covers this zone. Cannot assign to a lower unit.',
+            undefined,
+            'COVERED_BY_PARENT_ZONE'
+          );
+        }
+      }
+    }
+
+    return prisma.technicianAssignment.create({
+      data: { technicianId, clientId: clientId ?? null, zoneId: zoneId ?? null },
+      include: {
+        client: { select: { id: true, name: true } },
+        zone: { select: { id: true, name: true } },
+      },
+    });
   },
 
   async removeAssignment(technicianId, assignmentId) {
