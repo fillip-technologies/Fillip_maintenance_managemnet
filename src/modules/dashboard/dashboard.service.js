@@ -92,10 +92,11 @@ export const dashboardService = {
    */
   async zoneBreakdown(query, authScope) {
     const where = await deviceScope(query, authScope);
+    const categoryFilter = query.categoryId ? { categoryId: query.categoryId } : {};
 
     const groups = await prisma.device.groupBy({
       by: ['zoneId', 'status'],
-      where: { ...where, status: { not: 'retired' } },
+      where: { ...where, ...categoryFilter, status: { not: 'retired' } },
       _count: { _all: true },
     });
 
@@ -126,6 +127,56 @@ export const dashboardService = {
     }
 
     return { zones: [...byZone.values()].sort((a, b) => b.total - a.total) };
+  },
+
+  /**
+   * Per-product-category device health for a scope. Returns one row per category
+   * with total / working / notWorking counts — the data behind the product-first
+   * zone section view in the client-admin app.
+   */
+  async productBreakdown(query, authScope) {
+    const where = await deviceScope(query, authScope);
+
+    const groups = await prisma.device.groupBy({
+      by: ['categoryId', 'status'],
+      where: { ...where, status: { not: 'retired' } },
+      _count: { _all: true },
+    });
+
+    const categoryIds = [...new Set(groups.map((g) => g.categoryId).filter(Boolean))];
+    const categories = categoryIds.length
+      ? await prisma.productCategory.findMany({
+          where: { id: { in: categoryIds } },
+          select: { id: true, name: true, code: true, imageUrl: true },
+        })
+      : [];
+    const catById = new Map(categories.map((c) => [c.id, c]));
+
+    const byCat = new Map();
+    for (const row of groups) {
+      const key = row.categoryId ?? 'unassigned';
+      if (!byCat.has(key)) {
+        const cat = catById.get(row.categoryId);
+        byCat.set(key, {
+          categoryId: row.categoryId ?? null,
+          name: cat?.name ?? 'Uncategorized',
+          code: cat?.code ?? '',
+          imageUrl: cat?.imageUrl ?? null,
+          total: 0,
+          working: 0,
+          faulty: 0,
+          underMaintenance: 0,
+        });
+      }
+      const bucket = byCat.get(key);
+      const n = row._count._all;
+      bucket.total += n;
+      if (row.status === 'active')              bucket.working          += n;
+      else if (row.status === 'faulty')         bucket.faulty           += n;
+      else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
+    }
+
+    return { categories: [...byCat.values()].sort((a, b) => b.total - a.total) };
   },
 
   /**

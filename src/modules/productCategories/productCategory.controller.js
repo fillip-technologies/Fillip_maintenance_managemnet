@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess, sendCreated } from '../../utils/response.js';
+import { ApiError } from '../../utils/ApiError.js';
 import { productCategoryService } from './productCategory.service.js';
 
 export const productCategoryController = {
@@ -12,5 +13,9 @@ export const productCategoryController = {
   remove: asyncHandler(async (req, res) => {
     await productCategoryService.remove(req.params.id);
     sendSuccess(res, { id: req.params.id, deleted: true });
+  }),
+  uploadLogo: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('No file provided');
+    sendSuccess(res, await productCategoryService.uploadLogo(req.params.id, req.file.buffer));
   }),
 };

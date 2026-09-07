@@ -11,6 +11,7 @@ const publicSelect = {
   id: true,
   name: true,
   code: true,
+  imageUrl: true,
   createdAt: true,
   _count: { select: { devices: true } },
 };
@@ -36,6 +37,19 @@ export const productCategoryService = {
       }
       throw e;
     }
+  },
+
+  async uploadLogo(id, buffer) {
+    const { streamToCloudinary } = await import('../../middleware/upload.js');
+    const result = await streamToCloudinary(buffer, {
+      folder: 'fixly/categories',
+      resource_type: 'image',
+    });
+    return prisma.productCategory.update({
+      where: { id },
+      data: { imageUrl: result.secure_url },
+      select: publicSelect,
+    });
   },
 
   async remove(id) {

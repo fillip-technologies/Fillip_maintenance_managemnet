@@ -27,6 +27,15 @@ const summarySchema = z.object({
   }),
 });
 
+const zoneBreakdownSchema = z.object({
+  query: z.object({
+    scope: z.enum(['zone', 'client', 'platform']),
+    id: z.string().uuid().optional(),
+    includeSubzones: z.enum(['true', 'false']).optional(),
+    categoryId: z.string().uuid().optional(),
+  }),
+});
+
 dashboardRouter.get(
   '/summary',
   validate(summarySchema),
@@ -35,12 +44,23 @@ dashboardRouter.get(
   })
 );
 
-// Per-zone device health for a scope (real data behind the overview's zone
-// distribution). Same scope contract as /summary.
+// Per-zone device health for a scope. Accepts optional categoryId to narrow
+// the breakdown to devices of one product category (used by the product-first
+// zone section in the client-admin app).
 dashboardRouter.get(
   '/zone-breakdown',
-  validate(summarySchema),
+  validate(zoneBreakdownSchema),
   asyncHandler(async (req, res) => {
     sendSuccess(res, await dashboardService.zoneBreakdown(req.validatedQuery, req.scope));
+  })
+);
+
+// Per-product-category device health for a scope — backing the client-admin
+// "products first" zone section.
+dashboardRouter.get(
+  '/product-breakdown',
+  validate(summarySchema),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await dashboardService.productBreakdown(req.validatedQuery, req.scope));
   })
 );

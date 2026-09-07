@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
 import { requireRole } from '../../middleware/authenticate.js';
+import { uploadMiddleware } from '../../middleware/upload.js';
 import { productCategoryController } from './productCategory.controller.js';
-import { createCategorySchema, deleteCategorySchema } from './productCategory.validation.js';
+import { createCategorySchema, deleteCategorySchema, uploadLogoSchema } from './productCategory.validation.js';
 
 export const productCategoryRouter = Router();
 
@@ -10,4 +11,5 @@ export const productCategoryRouter = Router();
 // (to file/label units); only the CEO (super_admin) may create or delete.
 productCategoryRouter.get('/', productCategoryController.list);
 productCategoryRouter.post('/', requireRole('super_admin'), validate(createCategorySchema), productCategoryController.create);
+productCategoryRouter.post('/:id/logo', requireRole('super_admin'), validate(uploadLogoSchema), uploadMiddleware.single('file'), productCategoryController.uploadLogo);
 productCategoryRouter.delete('/:id', requireRole('super_admin'), validate(deleteCategorySchema), productCategoryController.remove);

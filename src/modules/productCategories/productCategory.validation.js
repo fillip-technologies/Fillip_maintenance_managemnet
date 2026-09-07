@@ -10,3 +10,7 @@ export const createCategorySchema = z.object({
 export const deleteCategorySchema = z.object({
   params: z.object({ id: z.string().uuid() }),
 });
+
+export const uploadLogoSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});

@@ -19,7 +19,7 @@ const DEVICE_MANUAL_TRANSITIONS = {
 const withZone = {
   zone: { select: { id: true, name: true, clientId: true } },
   hardwareType: { select: { id: true, name: true } },
-  category: { select: { id: true, name: true, code: true } },
+  category: { select: { id: true, name: true, code: true, imageUrl: true } },
   company: { select: { id: true, name: true } },
   addedBy: { select: { id: true, name: true } },
 };
