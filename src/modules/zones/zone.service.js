@@ -141,10 +141,19 @@ export const zoneService = {
     assertInScope(clientInScope(scope, clientId), 'Cannot create a zone for a client outside your scope');
     // A sub-zone must belong to the same client as its parent, and depth ≤ 5.
     if (parentZoneId) {
-      const parent = await prisma.zone.findUnique({ where: { id: parentZoneId } });
+      const parent = await prisma.zone.findUnique({
+        where: { id: parentZoneId },
+        include: { _count: { select: { devices: true } } },
+      });
       if (!parent) throw ApiError.badRequest('Parent zone does not exist');
       if (parent.clientId !== clientId) {
         throw ApiError.badRequest('Parent zone belongs to a different client');
+      }
+      if (parent._count.devices > 0) {
+        throw ApiError.conflict(
+          'Cannot create a sub-zone inside a zone that already has devices. Remove all devices from the zone first.',
+          'ZONE_HAS_DEVICES',
+        );
       }
       const ancestors = await this.ancestors(parentZoneId);
       if (ancestors.length >= 5) {

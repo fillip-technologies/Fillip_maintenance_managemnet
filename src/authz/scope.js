@@ -51,8 +51,7 @@ export async function resolveScope(user) {
         },
       });
       scope.clientIds = unique(coverage.map((c) => c.clientId).filter(Boolean));
-      // Resolve company IDs so the technician can see in-stock units for their
-      // assigned orgs — mirrors the client_admin companyIds path.
+      
       scope.companyIds = unique(coverage.map((c) => c.client?.companyId).filter(Boolean));
       const roots = coverage.map((c) => c.zoneId).filter(Boolean);
       scope.zoneIds = await expandZones(roots);
@@ -60,7 +59,7 @@ export async function resolveScope(user) {
     return scope;
   }
 
-  // zone_incharge / zone_staff — assigned zones ALWAYS cascade into sub-zones.
+  
   const assignments = await prisma.zoneAssignment.findMany({
     where: { userId: user.id, unassignedAt: null },
     select: { zoneId: true },

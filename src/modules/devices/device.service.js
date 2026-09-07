@@ -102,10 +102,16 @@ export const deviceService = {
     if (!creatorId) throw ApiError.badRequest('Creator could not be determined');
     const zone = await prisma.zone.findUnique({
       where: { id: data.zoneId },
-      select: { id: true, clientId: true },
+      select: { id: true, clientId: true, _count: { select: { children: true } } },
     });
     if (!zone) throw ApiError.badRequest('Zone does not exist');
     assertInScope(zoneInScope(scope, zone), 'Cannot add a device to a zone outside your scope');
+    if (zone._count.children > 0) {
+      throw ApiError.conflict(
+        'Cannot add a device to a zone that has sub-zones. Add devices to the individual sub-zones instead.',
+        'ZONE_HAS_CHILDREN',
+      );
+    }
     return prisma.device.create({ data: { ...data, addedById: creatorId }, include: withZone });
   },
 
@@ -127,10 +133,16 @@ export const deviceService = {
     if (zoneId) {
       const zone = await prisma.zone.findUnique({
         where: { id: zoneId },
-        select: { id: true, clientId: true, client: { select: { companyId: true } } },
+        select: { id: true, clientId: true, client: { select: { companyId: true } }, _count: { select: { children: true } } },
       });
       if (!zone) throw ApiError.badRequest('Zone does not exist');
       assertInScope(zoneInScope(scope, zone), 'Cannot add a unit to a zone outside your scope');
+      if (zone._count.children > 0) {
+        throw ApiError.conflict(
+          'Cannot add a device to a zone that has sub-zones. Add devices to the individual sub-zones instead.',
+          'ZONE_HAS_CHILDREN',
+        );
+      }
       zoneClientCompanyId = zone.client?.companyId ?? null;
     }
 
@@ -157,10 +169,16 @@ export const deviceService = {
     const device = await this.getById(id, scope);
     const zone = await prisma.zone.findUnique({
       where: { id: zoneId },
-      select: { id: true, clientId: true, client: { select: { companyId: true } } },
+      select: { id: true, clientId: true, client: { select: { companyId: true } }, _count: { select: { children: true } } },
     });
     if (!zone) throw ApiError.badRequest('Zone does not exist');
     assertInScope(zoneInScope(scope, zone), 'Cannot deploy to a zone outside your scope');
+    if (zone._count.children > 0) {
+      throw ApiError.conflict(
+        'Cannot deploy a device to a zone that has sub-zones. Deploy to the individual sub-zones instead.',
+        'ZONE_HAS_CHILDREN',
+      );
+    }
     // Keep org integrity: a unit only deploys into a zone of its own company.
     if (device.companyId && zone.client?.companyId && device.companyId !== zone.client.companyId) {
       throw ApiError.badRequest('Zone belongs to a different organization than the unit');
