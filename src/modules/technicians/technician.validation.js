@@ -51,3 +51,7 @@ export const addAssignmentSchema = z.object({
 export const removeAssignmentSchema = z.object({
   params: z.object({ id: z.string().uuid(), assignmentId: z.string().uuid() }),
 });
+
+export const myZoneDetailSchema = z.object({
+  params: z.object({ zoneId: z.string().uuid() }),
+});

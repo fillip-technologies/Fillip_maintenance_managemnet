@@ -11,9 +11,15 @@ import {
   deleteTechnicianSchema,
   addAssignmentSchema,
   removeAssignmentSchema,
+  myZoneDetailSchema,
 } from './technician.validation.js';
 
 export const technicianRouter = Router();
+
+// Mobile (Flutter) — technician's own zone list and zone detail.
+// Must be registered before /:id so Express doesn't swallow 'me' as a UUID param.
+technicianRouter.get('/me/zones', requireRole('technician'), technicianController.myZones);
+technicianRouter.get('/me/zones/:zoneId', requireRole('technician'), validate(myZoneDetailSchema), technicianController.myZoneDetail);
 
 // Read-only routes — accessible to all authenticated users for visibility.
 technicianRouter.get('/', validate(listTechniciansSchema), technicianController.list);

@@ -49,6 +49,22 @@ async function resolveAudience({ db, ancestorsOf }, audience, issue) {
       return admins.map((u) => u.id);
     }
 
+    case AUDIENCE.ZONE_TECHNICIAN: {
+      const zoneId = issue.device?.zoneId;
+      if (!zoneId) return [];
+      const zone = await db.zone.findUnique({
+        where: { id: zoneId },
+        select: { clientId: true },
+      });
+      if (!zone) return [];
+      // Technicians assigned directly to this zone OR with org-level coverage for its client.
+      const assignments = await db.technicianAssignment.findMany({
+        where: { OR: [{ zoneId }, { clientId: zone.clientId }] },
+        select: { technician: { select: { userId: true } } },
+      });
+      return [...new Set(assignments.map((a) => a.technician.userId))];
+    }
+
     default:
       return [];
   }

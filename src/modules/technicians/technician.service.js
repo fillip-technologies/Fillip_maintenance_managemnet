@@ -4,6 +4,7 @@ import { paginate } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendCredentialsEmail } from '../../lib/mailer.js';
 import { logger } from '../../config/logger.js';
+import { OPEN_ISSUE_STATES } from '../../utils/issueStateMachine.js';
 
 const withUser = { user: { select: { id: true, name: true, email: true, role: true } } };
 
@@ -195,5 +196,119 @@ export const technicianService = {
     });
     if (!assignment) throw ApiError.notFound('Assignment not found');
     await prisma.technicianAssignment.delete({ where: { id: assignmentId } });
+  },
+
+  // --- Mobile (Flutter) technician-facing endpoints ---
+
+  /**
+   * Returns zones visible to this technician with open-issue count and device
+   * count. The Flutter app uses openIssues > 0 to colour a zone card red.
+   * Covers both direct zone assignments and org-level (clientId) assignments.
+   */
+  async myZones(technicianId) {
+    const assignments = await prisma.technicianAssignment.findMany({
+      where: { technicianId },
+      select: { zoneId: true, clientId: true },
+    });
+    if (!assignments.length) return [];
+
+    const directZoneIds = assignments.filter((a) => a.zoneId).map((a) => a.zoneId);
+    const clientIds = assignments.filter((a) => a.clientId).map((a) => a.clientId);
+
+    const orClauses = [
+      ...(directZoneIds.length ? [{ id: { in: directZoneIds } }] : []),
+      ...(clientIds.length ? [{ clientId: { in: clientIds } }] : []),
+    ];
+    if (!orClauses.length) return [];
+
+    const zones = await prisma.zone.findMany({
+      where: { OR: orClauses },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        client: { select: { id: true, name: true } },
+        _count: { select: { devices: true } },
+      },
+      orderBy: [{ client: { name: 'asc' } }, { name: 'asc' }],
+    });
+
+    const zoneIds = zones.map((z) => z.id);
+    const openIssues = zoneIds.length
+      ? await prisma.issue.findMany({
+          where: { status: { in: OPEN_ISSUE_STATES }, device: { zoneId: { in: zoneIds } } },
+          select: { device: { select: { zoneId: true } } },
+        })
+      : [];
+
+    const countByZone = {};
+    for (const issue of openIssues) {
+      const id = issue.device.zoneId;
+      countByZone[id] = (countByZone[id] ?? 0) + 1;
+    }
+
+    return zones.map((z) => ({
+      id: z.id,
+      name: z.name,
+      status: z.status,
+      client: z.client,
+      deviceCount: z._count.devices,
+      openIssues: countByZone[z.id] ?? 0,
+    }));
+  },
+
+  /**
+   * Zone detail for the Flutter deep-link screen. Returns the zone with its
+   * devices and open issues — enough for a visual card grid without heavy text.
+   */
+  async myZoneDetail(technicianId, zoneId) {
+    const zone = await prisma.zone.findUnique({
+      where: { id: zoneId },
+      select: { id: true, name: true, status: true, clientId: true, client: { select: { id: true, name: true, location: true, facilityName: true } } },
+    });
+    if (!zone) throw ApiError.notFound('Zone not found');
+
+    const access = await prisma.technicianAssignment.findFirst({
+      where: { technicianId, OR: [{ zoneId }, { clientId: zone.clientId }] },
+    });
+    if (!access) throw ApiError.forbidden('You are not assigned to this zone');
+
+    const devices = await prisma.device.findMany({
+      where: { zoneId },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        imageUrl: true,
+        status: true,
+        category: { select: { name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const deviceIds = devices.map((d) => d.id);
+    const openIssues = deviceIds.length
+      ? await prisma.issue.findMany({
+          where: { deviceId: { in: deviceIds }, status: { in: OPEN_ISSUE_STATES } },
+          select: {
+            id: true,
+            status: true,
+            priority: true,
+            createdAt: true,
+            category: { select: { name: true } },
+            device: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
+
+    return {
+      id: zone.id,
+      name: zone.name,
+      status: zone.status,
+      client: zone.client,
+      devices,
+      openIssues,
+    };
   },
 };

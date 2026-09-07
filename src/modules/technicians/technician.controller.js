@@ -30,4 +30,10 @@ export const technicianController = {
     await technicianService.removeAssignment(req.params.id, req.params.assignmentId);
     res.status(204).send();
   }),
+  myZones: asyncHandler(async (req, res) => {
+    sendSuccess(res, await technicianService.myZones(req.user.technicianId));
+  }),
+  myZoneDetail: asyncHandler(async (req, res) => {
+    sendSuccess(res, await technicianService.myZoneDetail(req.user.technicianId, req.params.zoneId));
+  }),
 };

@@ -11,6 +11,7 @@ export const AUDIENCE = {
   ASSIGNED_TECHNICIAN: 'assigned_technician',
   ZONE_INCHARGE: 'zone_incharge',
   CLIENT_ADMIN: 'client_admin',
+  ZONE_TECHNICIAN: 'zone_technician',
 };
 
 const deviceLabel = (issue) =>
@@ -26,12 +27,13 @@ const deviceLabel = (issue) =>
  */
 export function notificationForEvent({ type, issue }) {
   if (!issue) return null;
-  const base = { data: { issueId: issue.id } };
+  // zoneId included in all payloads so the Flutter app can deep-link to the zone screen.
+  const base = { data: { issueId: issue.id, zoneId: issue.device?.zoneId ?? null } };
 
   if (type === DOMAIN_EVENT.ISSUE_CREATED) {
     return {
       ...base,
-      audiences: [AUDIENCE.CLIENT_ADMIN, AUDIENCE.ZONE_INCHARGE],
+      audiences: [AUDIENCE.CLIENT_ADMIN, AUDIENCE.ZONE_INCHARGE, AUDIENCE.ZONE_TECHNICIAN],
       title: 'New issue raised',
       body: deviceLabel(issue),
       data: { ...base.data, type: 'issue_created' },
@@ -45,7 +47,6 @@ export function notificationForEvent({ type, issue }) {
           audiences: [AUDIENCE.ASSIGNED_TECHNICIAN],
           title: 'New issue assigned',
           body: deviceLabel(issue),
-          // Matches the technician push contract in the screen-flow spec.
           data: { ...base.data, type: 'issue_assigned' },
         };
       case 'in_progress':
