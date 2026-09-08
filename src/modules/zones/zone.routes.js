@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { validate } from '../../middleware/validate.js';
 import { requireRole } from '../../middleware/authenticate.js';
+import { uploadMiddleware } from '../../middleware/upload.js';
 import { zoneController } from './zone.controller.js';
 import {
   listZonesSchema,
@@ -13,6 +14,7 @@ import {
   unassignSchema,
   deleteZoneSchema,
   activitySchema,
+  uploadLogoSchema,
 } from './zone.validation.js';
 
 export const zoneRouter = Router();
@@ -25,6 +27,7 @@ zoneRouter.post('/', canCreate, validate(createZoneSchema), zoneController.creat
 zoneRouter.get('/:id', validate(getZoneSchema), zoneController.get);
 zoneRouter.get('/:id/descendants', validate(descendantsSchema), zoneController.descendants);
 zoneRouter.patch('/:id', validate(updateZoneSchema), zoneController.update);
+zoneRouter.post('/:id/logo', canCreate, validate(uploadLogoSchema), uploadMiddleware.single('file'), zoneController.uploadLogo);
 // No hard delete — archive a zone via PATCH /:id/status → inactive so its
 // devices, issues, and history are preserved (spec §3.1).
 zoneRouter.patch('/:id/status', validate(setZoneStatusSchema), zoneController.setStatus);

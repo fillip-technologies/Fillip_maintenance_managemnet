@@ -219,6 +219,19 @@ export const zoneService = {
     return { items, meta };
   },
 
+  async uploadLogo(id, buffer, scope) {
+    await this.getByIdInScope(id, scope);
+    const { streamToCloudinary } = await import('../../middleware/upload.js');
+    const result = await streamToCloudinary(buffer, {
+      folder: 'fixly/zones',
+      resource_type: 'image',
+    });
+    return prisma.zone.update({
+      where: { id },
+      data: { logoUrl: result.secure_url },
+    });
+  },
+
   async remove(id, scope) {
     const zone = await this.getByIdInScope(id, scope);
     const childCount = await prisma.zone.count({ where: { parentZoneId: id } });

@@ -1,6 +1,7 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess, sendCreated, listPayload } from '../../utils/response.js';
 import { zoneService } from './zone.service.js';
+import { ApiError } from '../../utils/ApiError.js';
 
 export const zoneController = {
   list: asyncHandler(async (req, res) => {
@@ -32,6 +33,10 @@ export const zoneController = {
   activity: asyncHandler(async (req, res) => {
     const result = await zoneService.activity(req.params.id, req.validatedQuery, req.scope);
     sendSuccess(res, result);
+  }),
+  uploadLogo: asyncHandler(async (req, res) => {
+    if (!req.file) throw new ApiError(400, 'No file uploaded');
+    sendSuccess(res, await zoneService.uploadLogo(req.params.id, req.file.buffer, req.scope));
   }),
   remove: asyncHandler(async (req, res) => {
     await zoneService.remove(req.params.id, req.scope);

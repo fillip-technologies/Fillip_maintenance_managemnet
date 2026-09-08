@@ -149,6 +149,7 @@ model Zone {
   clientId     String     @map("client_id") @db.Uuid
   parentZoneId String?    @map("parent_zone_id") @db.Uuid
   name         String     @db.VarChar(120)
+  logoUrl      String?    @map("logo_url")
   status       ZoneStatus @default(draft)
   createdById  String?    @map("created_by") @db.Uuid
   createdAt    DateTime   @default(now()) @map("created_at")

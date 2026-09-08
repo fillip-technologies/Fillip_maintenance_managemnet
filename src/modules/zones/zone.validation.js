@@ -57,6 +57,8 @@ export const unassignSchema = z.object({
   params: z.object({ id: z.string().uuid(), assignmentId: z.string().uuid() }),
 });
 
+export const uploadLogoSchema = z.object({ params: idParam });
+
 export const activitySchema = z.object({
   params: idParam,
   query: paginationQuery.extend({
