@@ -7,9 +7,11 @@ const PASSWORD = 'Password123!';
 async function main() {
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
-  // 1. Super admin (platform owner). Company is created automatically on first client creation.
-  await prisma.user.create({
-    data: {
+  // 1. Super admin
+  await prisma.user.upsert({
+    where:  { email: 'super@example.com' },
+    update: {},
+    create: {
       name: 'Super Admin',
       email: 'super@example.com',
       passwordHash,
@@ -18,49 +20,55 @@ async function main() {
     },
   });
 
-  // 3. Verticals catalogue.
+  // 2. Verticals catalogue
   const verticalDefs = [
     { key: 'hardware-cctv', name: 'Hardware / CCTV' },
-    { key: 'hvac', name: 'HVAC' },
-    { key: 'fire-safety', name: 'Fire Safety' },
-    { key: 'access-control', name: 'Access Control' },
-    { key: 'networking', name: 'Networking' },
-    { key: 'elevators', name: 'Elevators' },
-    { key: 'plumbing', name: 'Plumbing' },
-    { key: 'electrical', name: 'Electrical' },
-    { key: 'solar', name: 'Solar Power' },
+    { key: 'hvac',          name: 'HVAC' },
+    { key: 'fire-safety',   name: 'Fire Safety' },
+    { key: 'access-control',name: 'Access Control' },
+    { key: 'networking',    name: 'Networking' },
+    { key: 'elevators',     name: 'Elevators' },
+    { key: 'plumbing',      name: 'Plumbing' },
+    { key: 'electrical',    name: 'Electrical' },
+    { key: 'solar',         name: 'Solar Power' },
     { key: 'water-management', name: 'Water Management' },
   ];
-  for (const v of verticalDefs) await prisma.vertical.create({ data: v });
+  for (const v of verticalDefs) {
+    await prisma.vertical.upsert({ where: { key: v.key }, update: {}, create: v });
+  }
 
-  // 4. Product categories (device catalogue, code = unique ID prefix).
+  // 3. Product categories (unique on both name and code)
   const productCategoryDefs = [
-    { name: 'CCTV Camera', code: 'CAM' },
+    { name: 'CCTV Camera',    code: 'CAM' },
     { name: 'Access Control', code: 'ACS' },
-    { name: 'Fire Alarm', code: 'FIR' },
+    { name: 'Fire Alarm',     code: 'FIR' },
     { name: 'Network Device', code: 'NET' },
-    { name: 'HVAC Unit', code: 'HVC' },
-    { name: 'PA System', code: 'PAS' },
-    { name: 'Sensor', code: 'SEN' },
+    { name: 'HVAC Unit',      code: 'HVC' },
+    { name: 'PA System',      code: 'PAS' },
+    { name: 'Sensor',         code: 'SEN' },
   ];
-  for (const pc of productCategoryDefs) await prisma.productCategory.create({ data: pc });
+  for (const pc of productCategoryDefs) {
+    await prisma.productCategory.upsert({ where: { code: pc.code }, update: {}, create: pc });
+  }
 
-  // 5. Hardware types.
+  // 4. Hardware types (unique on name)
   const hardwareTypeDefs = [
-    { name: 'CCTV Camera', specFields: { model: 'string', serial: 'string', ip: 'string', resolution: 'string' } },
-    { name: 'Access Control Panel', specFields: { model: 'string', serial: 'string', readers: 'number' } },
-    { name: 'Air Quality Sensor', specFields: { model: 'string', serial: 'string' } },
-    { name: 'Biometric Scanner', specFields: { model: 'string', serial: 'string' } },
-    { name: 'Fire Alarm Panel', specFields: { model: 'string', serial: 'string', zones: 'number' } },
-    { name: 'Network Switch', specFields: { model: 'string', serial: 'string', ports: 'number' } },
-    { name: 'PA Speaker', specFields: { model: 'string', serial: 'string', wattage: 'number' } },
-    { name: 'Router', specFields: { model: 'string', serial: 'string', ip: 'string' } },
-    { name: 'Smoke Detector', specFields: { model: 'string', serial: 'string' } },
-    { name: 'Thermostat', specFields: { model: 'string', serial: 'string' } },
+    { name: 'CCTV Camera',           specFields: { model: 'string', serial: 'string', ip: 'string', resolution: 'string' } },
+    { name: 'Access Control Panel',  specFields: { model: 'string', serial: 'string', readers: 'number' } },
+    { name: 'Air Quality Sensor',    specFields: { model: 'string', serial: 'string' } },
+    { name: 'Biometric Scanner',     specFields: { model: 'string', serial: 'string' } },
+    { name: 'Fire Alarm Panel',      specFields: { model: 'string', serial: 'string', zones: 'number' } },
+    { name: 'Network Switch',        specFields: { model: 'string', serial: 'string', ports: 'number' } },
+    { name: 'PA Speaker',            specFields: { model: 'string', serial: 'string', wattage: 'number' } },
+    { name: 'Router',                specFields: { model: 'string', serial: 'string', ip: 'string' } },
+    { name: 'Smoke Detector',        specFields: { model: 'string', serial: 'string' } },
+    { name: 'Thermostat',            specFields: { model: 'string', serial: 'string' } },
   ];
-  for (const ht of hardwareTypeDefs) await prisma.hardwareType.create({ data: ht });
+  for (const ht of hardwareTypeDefs) {
+    await prisma.hardwareType.upsert({ where: { name: ht.name }, update: {}, create: ht });
+  }
 
-  // 6. Global issue categories (categoryId = null → applies to any device type).
+  // 5. Global issue categories (categoryId = null → applies to any device type)
   const globalIssueCategories = [
     'Not working',
     'Physical damage',
@@ -72,7 +80,8 @@ async function main() {
     'Needs inspection',
   ];
   for (const name of globalIssueCategories) {
-    await prisma.issueCategory.create({ data: { name } });
+    const exists = await prisma.issueCategory.findFirst({ where: { name, categoryId: null } });
+    if (!exists) await prisma.issueCategory.create({ data: { name } });
   }
 
   const [users, verticals, productCategories, hardwareTypes, issueCategories] =
