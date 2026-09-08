@@ -244,7 +244,7 @@ Inside `issue.service.assign → transition`:
    `400 INVALID_TRANSITION`).
 3. The technician must exist.
 4. A row is appended to `issue_status_history` (nothing is overwritten).
-5. `refreshMaintenanceStatus` keeps the device's `under_maintenance` flag in sync.
+5. `reconcileDeviceStatus` recomputes the device's derived status — see §10.
 6. Emits `issue:updated` on the domain bus → **live** to the client/zone socket
    rooms **and** a **push** to the assigned technician (`type: issue_assigned`).
 
@@ -286,7 +286,8 @@ Inside `issue.service.create`:
 2. Rejects a `retired` device.
 3. Validates the category belongs to the device's hardware type.
 4. In one transaction: creates the issue (`open`), writes the first
-   `issue_status_history` row, and sets the device `under_maintenance`.
+   `issue_status_history` row, and runs `reconcileDeviceStatus` (device →
+   `under_maintenance` unless a faulty daily-log trend outranks it — see §10).
 5. Emits `issue:created` → live to the zone's + ancestors' + client's rooms, and
    a **push** to the client admins + the zone incharge(s).
 
@@ -321,8 +322,9 @@ Inside `dailyLog.service`:
 1. Device loaded in scope.
 2. One log per device per day — a repeat returns
    `409 ALREADY_LOGGED_TODAY` (the UI then offers the overwrite path).
-3. The **faulty trend** rule: `FAULTY_THRESHOLD` (default 3) consecutive
-   `not_working` logs auto-flags the device `faulty` — even with no ticket.
+3. `reconcileDeviceStatus` runs: `FAULTY_THRESHOLD` (default 3) consecutive
+   `not_working` logs flag the device `faulty` — even with no ticket — and the
+   flag auto-clears once a `working`/`needs_attention` log breaks the streak.
 4. Emits `log:submitted` → live to zone dashboards.
 
 **Response `201`** `{ data: { id, status:"not_working", logDate:"2026-09-01" } }`.

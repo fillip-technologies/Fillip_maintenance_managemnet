@@ -1,7 +1,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
-import { OPEN_ISSUE_STATES } from '../../utils/issueStateMachine.js';
+import { env } from '../../config/env.js';
+// Issue statuses that "occupy" a device (work still pending). `resolved` and
+// `closed` free it — see reconcileDeviceStatus.
+import { OPEN_ISSUE_STATES as DEVICE_OCCUPYING_STATES } from '../../utils/issueStateMachine.js';
 import { zoneService } from '../zones/zone.service.js';
 import { reserveCodes } from '../productCategories/productCategory.service.js';
 import { deviceScopeWhere, combine, zoneInScope, assertInScope } from '../../authz/scope.js';
@@ -203,25 +206,67 @@ export const deviceService = {
 };
 
 /**
- * Keeps the denormalized device status in sync with its open issues
- * (section 3.2). Call inside the same transaction that changed an issue.
- * - Retired devices are never touched.
- * - Any open/in-progress issue → `under_maintenance`.
- * - No open issues and currently `under_maintenance` → back to `active`.
- * Does not clear a `faulty` flag raised by daily logs unless an issue closes.
+ * The single source of truth for a *deployed* device's derived status.
+ *
+ * Call inside the same transaction as any change to that device's issues OR its
+ * daily logs. Previously two functions owned this — `refreshMaintenanceStatus`
+ * (issue side) and `maybeFlagFaulty` (daily-log side) — and they overwrote each
+ * other (raising a ticket wiped a log-driven `faulty`; closing a ticket cleared
+ * `faulty` without re-checking the logs). This reconciles both signals with one
+ * precedence rule.
+ *
+ * Derived status, worst-wins:
+ *   1. `faulty`            — the most recent FAULTY_THRESHOLD daily logs exist
+ *                            and are ALL `not_working`. Auto-set AND auto-cleared
+ *                            (a single `working`/`needs_attention` log ends it).
+ *   2. `under_maintenance` — ≥ 1 issue in DEVICE_OCCUPYING_STATES
+ *                            (open/assigned/in_progress/on_hold/reopened).
+ *                            `resolved`/`closed` do NOT occupy the device.
+ *   3. `active`            — neither of the above.
+ *
+ * Never touches `retired` (terminal), `provisioned`, or an in-stock unit
+ * (`zoneId === null`) — those are manual-only.
+ *
+ * @returns {Promise<string|null>} the effective status after reconciling.
  */
-export async function refreshMaintenanceStatus(tx, deviceId) {
-  const device = await tx.device.findUnique({ where: { id: deviceId } });
-  if (!device || device.status === 'retired') return;
-
-  const openCount = await tx.issue.count({
-    where: { deviceId, status: { in: OPEN_ISSUE_STATES } },
+export async function reconcileDeviceStatus(tx, deviceId) {
+  const device = await tx.device.findUnique({
+    where: { id: deviceId },
+    select: { id: true, status: true, zoneId: true },
   });
-
-  if (openCount > 0 && device.status !== 'under_maintenance') {
-    await tx.device.update({ where: { id: deviceId }, data: { status: 'under_maintenance' } });
-  } else if (openCount === 0 && (device.status === 'under_maintenance' || device.status === 'faulty')) {
-    // No open issues → device is working again regardless of what flagged it.
-    await tx.device.update({ where: { id: deviceId }, data: { status: 'active' } });
+  if (!device) return null;
+  if (
+    device.status === 'retired' ||
+    device.status === 'provisioned' ||
+    device.zoneId === null
+  ) {
+    return device.status;
   }
+
+  const [recentLogs, occupyingIssues] = await Promise.all([
+    tx.dailyStatusLog.findMany({
+      where: { deviceId },
+      orderBy: { logDate: 'desc' },
+      take: env.FAULTY_THRESHOLD,
+      select: { status: true },
+    }),
+    tx.issue.count({
+      where: { deviceId, status: { in: DEVICE_OCCUPYING_STATES } },
+    }),
+  ]);
+
+  const failingTrend =
+    recentLogs.length === env.FAULTY_THRESHOLD &&
+    recentLogs.every((log) => log.status === 'not_working');
+
+  const target = failingTrend
+    ? 'faulty'
+    : occupyingIssues > 0
+      ? 'under_maintenance'
+      : 'active';
+
+  if (target !== device.status) {
+    await tx.device.update({ where: { id: deviceId }, data: { status: target } });
+  }
+  return target;
 }

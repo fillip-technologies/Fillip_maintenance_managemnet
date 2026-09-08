@@ -201,10 +201,21 @@ Codes are minted per category; `quantity` expands into that many units.
 
 A **defect** is raised against a unit and runs a state machine. Raisers:
 `zone_staff`, `zone_incharge`, `client_admin` (scoped to units they can see).
-Raising flips the unit to `under_maintenance`; closing returns it to `active`.
 
 **Status flow:** `open → assigned → in_progress → (on_hold) → resolved → closed`,
-with `reopened` looping back. Every change is recorded with who/when.
+with `reopened` looping back. Every change is recorded with who/when. A
+`resolved` issue **auto-closes** after `AUTO_CLOSE_DAYS` (default 3) if undisputed
+(hourly sweep + one pass on boot).
+
+**Device status is derived, not set directly.** After any change to a device's
+issues or daily logs, `reconcileDeviceStatus` recomputes it — worst-wins:
+1. `faulty` — the last `FAULTY_THRESHOLD` daily logs are all `not_working`
+   (auto-set **and** auto-cleared once a `working`/`needs_attention` log lands);
+2. `under_maintenance` — ≥ 1 issue in `open/assigned/in_progress/on_hold/reopened`
+   (`resolved` and `closed` free the unit → back to `active`);
+3. `active` — otherwise.
+`retired`, `provisioned` and in-stock units are never auto-changed. A one-off
+`node scripts/fix_device_status.mjs` reconciles all existing rows.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -246,8 +257,10 @@ any unit); a set `categoryId` scopes it to one product category.
 
 ## 12. Daily Status Logs  `/daily-logs`
 
-Zone officers log a unit's daily health (web or mobile). Consecutive
-`not_working` logs (threshold configurable) auto-flag the unit `faulty`.
+Zone officers log a unit's daily health (web or mobile). `FAULTY_THRESHOLD`
+consecutive `not_working` logs auto-flag the unit `faulty`; the flag clears
+automatically once a `working`/`needs_attention` log breaks the streak
+(see §10, "Device status is derived").
 
 | Method | Path | Auth | Description |
 |---|---|---|---|

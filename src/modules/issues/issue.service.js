@@ -2,7 +2,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { assertIssueTransition } from '../../utils/issueStateMachine.js';
-import { refreshMaintenanceStatus } from '../devices/device.service.js';
+import { reconcileDeviceStatus } from '../devices/device.service.js';
 import { zoneService } from '../zones/zone.service.js';
 import { emitIssueEvent, DOMAIN_EVENT } from '../../realtime/events.js';
 import { issueScopeWhere, combine, deviceInScope, assertInScope } from '../../authz/scope.js';
@@ -80,7 +80,11 @@ export const issueService = {
       where: combine(issueScopeWhere(scope), { id }),
     });
     if (!issue) throw ApiError.notFound('Issue not found');
-    await prisma.issue.delete({ where: { id } });
+    // Deleting the last occupying issue must free the device, same as closing it.
+    await prisma.$transaction(async (tx) => {
+      await tx.issue.delete({ where: { id } });
+      await reconcileDeviceStatus(tx, issue.deviceId);
+    }, TX_OPTS);
     return issue;
   },
 
@@ -134,7 +138,7 @@ export const issueService = {
       await tx.issueStatusHistory.create({
         data: { issueId: created.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
       });
-      await refreshMaintenanceStatus(tx, deviceId);
+      await reconcileDeviceStatus(tx, deviceId);
       return created;
     }, TX_OPTS);
     emitIssueEvent(DOMAIN_EVENT.ISSUE_CREATED, issue);
@@ -198,7 +202,7 @@ export const issueService = {
       await tx.issueStatusHistory.create({
         data: { issueId: id, fromStatus: issue.status, toStatus, changedByUserId: changerId, notes: notes ?? null },
       });
-      await refreshMaintenanceStatus(tx, issue.deviceId);
+      await reconcileDeviceStatus(tx, issue.deviceId);
       return result;
     }, TX_OPTS);
     emitIssueEvent(DOMAIN_EVENT.ISSUE_UPDATED, updated);
@@ -273,7 +277,7 @@ export const issueService = {
         await tx.issueStatusHistory.create({
           data: { issueId: issue.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
         });
-        await refreshMaintenanceStatus(tx, deviceId);
+        await reconcileDeviceStatus(tx, deviceId);
         created.push(issue);
       }
       return created;

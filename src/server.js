@@ -2,7 +2,8 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './lib/prisma.js';
-import { OPEN_ISSUE_STATES } from './utils/issueStateMachine.js';
+import { reconcileDeviceStatus } from './modules/devices/device.service.js';
+import { issueService } from './modules/issues/issue.service.js';
 import { initRealtime } from './realtime/socket.js';
 import { initPush } from './push/provider.js';
 import { initPushNotifier } from './push/notifier.js';
@@ -13,29 +14,72 @@ const server = app.listen(env.PORT, () => {
   logger.info(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);
 });
 
-// Repair stale under_maintenance devices after the server is fully ready.
-// Runs after initRealtime/initPush so socket rooms exist before any broadcast,
-// and deferred by one tick so the listen callback completes first.
+/**
+ * Close `resolved` issues that have sat undisputed for AUTO_CLOSE_DAYS. Goes
+ * through issueService.transition so it writes a history row, reconciles the
+ * device, and emits `issue:updated` like any other close.
+ */
+async function autoCloseResolvedIssues() {
+  const cutoff = new Date(Date.now() - env.AUTO_CLOSE_DAYS * 24 * 60 * 60 * 1000);
+  const due = await prisma.issue.findMany({
+    where: { status: 'resolved', resolvedAt: { lt: cutoff } },
+    select: { id: true, raisedByUserId: true },
+    take: 200,
+  });
+  let closed = 0;
+  for (const issue of due) {
+    try {
+      await issueService.transition(
+        issue.id,
+        {
+          toStatus: 'closed',
+          notes: `Auto-closed after ${env.AUTO_CLOSE_DAYS} days with no dispute.`,
+          changedByUserId: issue.raisedByUserId,
+        },
+        null,
+        { platform: true },
+      );
+      closed += 1;
+    } catch (err) {
+      logger.warn({ err, issueId: issue.id }, 'Auto-close failed for one issue');
+    }
+  }
+  if (closed > 0) logger.info({ closed }, 'Auto-closed resolved issues');
+}
+
+// After the server is ready: reconcile every deployed device's derived status
+// (heals drift from missed events or manual DB edits) and run one auto-close
+// pass. Deferred one tick so the listen callback completes first.
 setImmediate(async () => {
   try {
-    const stale = await prisma.device.findMany({
-      where: {
-        status: 'under_maintenance',
-        issues: { none: { status: { in: OPEN_ISSUE_STATES } } },
-      },
+    const devices = await prisma.device.findMany({
+      where: { zoneId: { not: null }, status: { notIn: ['retired', 'provisioned'] } },
       select: { id: true },
     });
-    if (stale.length > 0) {
-      await prisma.device.updateMany({
-        where: { id: { in: stale.map((d) => d.id) } },
-        data: { status: 'active' },
-      });
-      logger.info({ count: stale.length }, 'Repaired stale under_maintenance devices on startup');
+    for (let i = 0; i < devices.length; i += 10) {
+      const batch = devices.slice(i, i + 10);
+      await Promise.all(
+        batch.map((d) =>
+          prisma
+            .$transaction((tx) => reconcileDeviceStatus(tx, d.id))
+            .catch((err) => logger.warn({ err, deviceId: d.id }, 'reconcile failed for one device')),
+        ),
+      );
     }
+    logger.info({ scanned: devices.length }, 'Startup device-status reconcile complete');
   } catch (err) {
-    logger.error({ err }, 'Startup device-status repair failed — continuing');
+    logger.error({ err }, 'Startup device-status reconcile failed — continuing');
   }
+
+  autoCloseResolvedIssues().catch((err) =>
+    logger.error({ err }, 'Startup auto-close pass failed'));
 });
+
+// Auto-close sweep, hourly. .unref() so it never blocks a graceful shutdown.
+setInterval(() => {
+  autoCloseResolvedIssues().catch((err) =>
+    logger.error({ err }, 'Auto-close sweep failed'));
+}, 60 * 60 * 1000).unref();
 
 // Attach Socket.IO to the same HTTP server.
 initRealtime(server);

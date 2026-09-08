@@ -1,9 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
-import { env } from '../../config/env.js';
 import { zoneService } from '../zones/zone.service.js';
 import { emitLogEvent } from '../../realtime/events.js';
+import { reconcileDeviceStatus } from '../devices/device.service.js';
 import { dailyLogScopeWhere, combine, deviceInScope, assertInScope } from '../../authz/scope.js';
 
 /** Normalize any date to a UTC midnight `Date` so one row = one calendar day. */
@@ -96,32 +96,12 @@ export const dailyLogService = {
         : await tx.dailyStatusLog.create({
             data: { deviceId, loggedByUserId: loggerId, status, logDate: date, notes: notes ?? null },
           });
-      await maybeFlagFaulty(tx, deviceId);
+      // Reconcile the device's derived status from BOTH signals (this new log's
+      // faulty-trend AND any open issues) in one place.
+      await reconcileDeviceStatus(tx, deviceId);
       return saved;
     }, { maxWait: 10_000, timeout: 20_000 });
     emitLogEvent(log, device.zoneId);
     return log;
   },
 };
-
-/**
- * If the most recent `FAULTY_THRESHOLD` logs are all `not_working` and the
- * device is otherwise `active`, soft-flag it `faulty` (section 3.2). This is a
- * warning state, not a hard block, and never overrides `under_maintenance` or
- * `retired`.
- */
-async function maybeFlagFaulty(tx, deviceId) {
-  const device = await tx.device.findUnique({ where: { id: deviceId } });
-  if (!device || device.status !== 'active') return;
-
-  const recent = await tx.dailyStatusLog.findMany({
-    where: { deviceId },
-    orderBy: { logDate: 'desc' },
-    take: env.FAULTY_THRESHOLD,
-    select: { status: true },
-  });
-
-  if (recent.length === env.FAULTY_THRESHOLD && recent.every((log) => log.status === 'not_working')) {
-    await tx.device.update({ where: { id: deviceId }, data: { status: 'faulty' } });
-  }
-}
