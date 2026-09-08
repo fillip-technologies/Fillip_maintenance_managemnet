@@ -13,7 +13,7 @@ function toLogDate(input) {
 }
 
 const withRefs = {
-  device: { select: { id: true, name: true, zoneId: true } },
+  device: { select: { id: true, name: true, zoneId: true, imageUrl: true } },
   loggedBy: { select: { id: true, name: true } },
 };
 
@@ -21,6 +21,7 @@ function flatten(log) {
   return {
     ...log,
     deviceName: log.device?.name ?? null,
+    deviceImageUrl: log.device?.imageUrl ?? null,
     loggedByName: log.loggedBy?.name ?? null,
   };
 }

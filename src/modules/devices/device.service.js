@@ -20,7 +20,7 @@ const DEVICE_MANUAL_TRANSITIONS = {
 };
 
 const withZone = {
-  zone: { select: { id: true, name: true, clientId: true } },
+  zone: { select: { id: true, name: true, clientId: true, logoUrl: true } },
   hardwareType: { select: { id: true, name: true } },
   category: { select: { id: true, name: true, code: true, imageUrl: true } },
   company: { select: { id: true, name: true } },
@@ -82,6 +82,7 @@ export const deviceService = {
     const items = rows.map((d) => ({
       ...d,
       zoneName: d.zone?.name ?? null,
+      zoneLogoUrl: d.zone?.logoUrl ?? null,
       categoryName: d.category?.name ?? null,
       companyName: d.company?.name ?? null,
       inStock: d.zoneId === null,

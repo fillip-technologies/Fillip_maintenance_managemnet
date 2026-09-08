@@ -298,7 +298,7 @@ export const technicianService = {
             priority: true,
             createdAt: true,
             category: { select: { name: true } },
-            device: { select: { id: true, name: true } },
+            device: { select: { id: true, name: true, imageUrl: true } },
           },
           orderBy: { createdAt: 'desc' },
         })
@@ -308,6 +308,7 @@ export const technicianService = {
       id: zone.id,
       name: zone.name,
       status: zone.status,
+      logoUrl: zone.logoUrl,
       client: zone.client,
       devices,
       openIssues,
