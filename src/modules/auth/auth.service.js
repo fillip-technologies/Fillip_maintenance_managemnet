@@ -51,14 +51,24 @@ export const authService = {
     const tokens = await issueTokens(user, technicianId);
 
     // Primary zone + its tree, for zone-scoped clients (cached client-side).
-    const assignment = await prisma.zoneAssignment.findFirst({
-      where: { userId: user.id, unassignedAt: null },
-      orderBy: { assignedAt: 'asc' },
-      include: { zone: { select: { logoUrl: true, name: true } } },
-    });
-    const zoneId = assignment?.zoneId ?? null;
-    const zoneLogoUrl = assignment?.zone?.logoUrl ?? null;
-    const zoneName = assignment?.zone?.name ?? null;
+    // ZoneAssignment covers zone_incharge / zone_staff.
+    // TechnicianAssignment covers technicians (separate table, optional zoneId).
+    const [assignment, techAssignment] = await Promise.all([
+      prisma.zoneAssignment.findFirst({
+        where: { userId: user.id, unassignedAt: null },
+        orderBy: { assignedAt: 'asc' },
+        include: { zone: { select: { logoUrl: true, name: true } } },
+      }),
+      technicianId
+        ? prisma.technicianAssignment.findFirst({
+            where: { technicianId, zoneId: { not: null } },
+            include: { zone: { select: { logoUrl: true, name: true } } },
+          })
+        : null,
+    ]);
+    const zoneId = assignment?.zoneId ?? techAssignment?.zoneId ?? null;
+    const zoneLogoUrl = assignment?.zone?.logoUrl ?? techAssignment?.zone?.logoUrl ?? null;
+    const zoneName = assignment?.zone?.name ?? techAssignment?.zone?.name ?? null;
     const [zoneDescendants, zoneAncestors] = zoneId
       ? await Promise.all([zoneService.descendants(zoneId), zoneService.ancestors(zoneId)])
       : [[], []];
