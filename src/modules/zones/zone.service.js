@@ -73,13 +73,13 @@ export const zoneService = {
     else await this.getById(rootId);
     return prisma.$queryRaw`
       WITH RECURSIVE tree AS (
-        SELECT id, name, parent_zone_id, status, 0 AS depth
+        SELECT id, name, parent_zone_id, logo_url, status, 0 AS depth
         FROM zones WHERE id = ${rootId}::uuid
         UNION ALL
-        SELECT z.id, z.name, z.parent_zone_id, z.status, t.depth + 1
+        SELECT z.id, z.name, z.parent_zone_id, z.logo_url, z.status, t.depth + 1
         FROM zones z JOIN tree t ON z.parent_zone_id = t.id
       )
-      SELECT id, name, parent_zone_id AS "parentZoneId", status, depth
+      SELECT id, name, parent_zone_id AS "parentZoneId", logo_url AS "logoUrl", status, depth
       FROM tree ORDER BY depth, name;
     `;
   },

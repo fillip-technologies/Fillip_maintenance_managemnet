@@ -227,6 +227,7 @@ export const technicianService = {
         id: true,
         name: true,
         status: true,
+        logoUrl: true,
         client: { select: { id: true, name: true } },
         _count: { select: { devices: true } },
       },
@@ -251,6 +252,7 @@ export const technicianService = {
       id: z.id,
       name: z.name,
       status: z.status,
+      logoUrl: z.logoUrl,
       client: z.client,
       deviceCount: z._count.devices,
       openIssues: countByZone[z.id] ?? 0,
@@ -264,7 +266,7 @@ export const technicianService = {
   async myZoneDetail(technicianId, zoneId) {
     const zone = await prisma.zone.findUnique({
       where: { id: zoneId },
-      select: { id: true, name: true, status: true, clientId: true, client: { select: { id: true, name: true, location: true, facilityName: true } } },
+      select: { id: true, name: true, status: true, logoUrl: true, clientId: true, client: { select: { id: true, name: true, location: true, facilityName: true } } },
     });
     if (!zone) throw ApiError.notFound('Zone not found');
 
