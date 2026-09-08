@@ -54,8 +54,11 @@ export const authService = {
     const assignment = await prisma.zoneAssignment.findFirst({
       where: { userId: user.id, unassignedAt: null },
       orderBy: { assignedAt: 'asc' },
+      include: { zone: { select: { logoUrl: true, name: true } } },
     });
     const zoneId = assignment?.zoneId ?? null;
+    const zoneLogoUrl = assignment?.zone?.logoUrl ?? null;
+    const zoneName = assignment?.zone?.name ?? null;
     const [zoneDescendants, zoneAncestors] = zoneId
       ? await Promise.all([zoneService.descendants(zoneId), zoneService.ancestors(zoneId)])
       : [[], []];
@@ -77,6 +80,8 @@ export const authService = {
         clientName,
         companyId: user.companyId ?? null,
         zoneId,
+        zoneLogoUrl,
+        zoneName,
       },
       zoneDescendants,
       zoneAncestors,
