@@ -213,6 +213,7 @@ model Device {
   companyId      String?      @map("company_id") @db.Uuid   // owning organization (set even in stock)
   zoneId         String?      @map("zone_id") @db.Uuid      // null = in stock (not deployed)
   categoryId     String?      @map("category_id") @db.Uuid
+  productTypeId  String?      @map("product_type_id") @db.Uuid
   hardwareTypeId String?      @map("hardware_type_id") @db.Uuid
   code           String?      @unique @db.VarChar(40)        // system-generated unique id, e.g. CAM-000123
   name           String       @db.VarChar(120)
@@ -233,6 +234,7 @@ model Device {
   company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
   zone            Zone?            @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  productType     ProductType?     @relation(fields: [productTypeId], references: [id], onDelete: SetNull)
   hardwareType    HardwareType?    @relation(fields: [hardwareTypeId], references: [id], onDelete: SetNull)
   addedBy         User?            @relation("DeviceAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
   issues          Issue[]
@@ -241,6 +243,7 @@ model Device {
   @@index([zoneId, status])
   @@index([companyId])
   @@index([categoryId])
+  @@index([productTypeId])
   @@map("devices")
 }
 
@@ -257,8 +260,24 @@ model ProductCategory {
 
   devices         Device[]
   issueCategories IssueCategory[]
+  productTypes    ProductType[]
 
   @@map("product_categories")
+}
+
+model ProductType {
+  id         String          @id @default(uuid()) @db.Uuid
+  categoryId String          @map("category_id") @db.Uuid
+  name       String          @db.VarChar(120)
+  imageUrl   String?         @map("image_url") @db.Text
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  category ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  devices  Device[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId])
+  @@map("product_types")
 }
 
 // ---------------------------------------------------------------------------

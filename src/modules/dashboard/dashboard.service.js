@@ -197,6 +197,16 @@ export const dashboardService = {
       else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
     }
 
+    // Enrich product-name buckets with imageUrl from ProductType (if a matching type exists).
+    const productTypeRecords = await prisma.productType.findMany({
+      where: { name: { in: [...byName.keys()] } },
+      select: { name: true, imageUrl: true },
+    });
+    const ptImageByName = new Map(productTypeRecords.map((p) => [p.name, p.imageUrl]));
+    for (const bucket of byName.values()) {
+      bucket.imageUrl = ptImageByName.get(bucket.name) ?? null;
+    }
+
     return {
       categories: [...byCat.values()].sort((a, b) => b.total - a.total),
       products:   [...byName.values()].sort((a, b) => b.total - a.total),

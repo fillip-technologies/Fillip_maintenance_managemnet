@@ -124,13 +124,22 @@ export const deviceService = {
    * (no zone → in stock), owning company is set, and a unique code is minted in
    * the same transaction. This is the unified product/device create path.
    */
-  async createUnit({ categoryId, companyId, zoneId, ...data }, user, scope) {
+  async createUnit({ categoryId, productTypeId, companyId, zoneId, ...data }, user, scope) {
     const creatorId = user?.id;
     if (!creatorId) throw ApiError.badRequest('Creator could not be determined');
     if (!categoryId) throw ApiError.badRequest('A category is required', undefined, 'CATEGORY_REQUIRED');
 
     const category = await prisma.productCategory.findUnique({ where: { id: categoryId }, select: { id: true } });
     if (!category) throw ApiError.badRequest('Category does not exist');
+
+    // If a productTypeId is given, derive the name from it and validate it belongs to the category.
+    if (productTypeId) {
+      const pt = await prisma.productType.findUnique({ where: { id: productTypeId }, select: { name: true, categoryId: true } });
+      if (!pt) throw ApiError.badRequest('Product type does not exist');
+      if (pt.categoryId !== categoryId) throw ApiError.badRequest('Product type does not belong to the selected category');
+      data.name = pt.name;
+    }
+    if (!data.name?.trim()) throw ApiError.badRequest('A product name or product type is required');
 
     // If a zone is given, it must exist and be in scope; derive its company.
     let zoneClientCompanyId = null;
@@ -159,6 +168,7 @@ export const deviceService = {
           ...data,
           code: codes[0],
           categoryId,
+          productTypeId: productTypeId ?? null,
           companyId: resolvedCompanyId,
           zoneId: zoneId ?? null,
           addedById: creatorId,

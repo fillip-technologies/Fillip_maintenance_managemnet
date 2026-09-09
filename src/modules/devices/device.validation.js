@@ -22,6 +22,7 @@ export const getDeviceSchema = z.object({ params: idParam });
 export const createDeviceSchema = z.object({
   body: z.object({
     categoryId: z.string().uuid(),
+    productTypeId: z.string().uuid().optional(),
     companyId: z.string().uuid().optional(),
     zoneId: z.string().uuid().optional(),
     hardwareTypeId: z.string().uuid().optional(),
