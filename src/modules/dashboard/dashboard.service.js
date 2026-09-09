@@ -136,24 +136,33 @@ export const dashboardService = {
    */
   async productBreakdown(query, authScope) {
     const where = await deviceScope(query, authScope);
+    const notRetired = { ...where, status: { not: 'retired' } };
 
-    const groups = await prisma.device.groupBy({
-      by: ['categoryId', 'status'],
-      where: { ...where, status: { not: 'retired' } },
-      _count: { _all: true },
-    });
+    const [catGroups, nameGroups] = await Promise.all([
+      prisma.device.groupBy({
+        by: ['categoryId', 'status'],
+        where: notRetired,
+        _count: { _all: true },
+      }),
+      prisma.device.groupBy({
+        by: ['name', 'status'],
+        where: notRetired,
+        _count: { _all: true },
+      }),
+    ]);
 
-    const categoryIds = [...new Set(groups.map((g) => g.categoryId).filter(Boolean))];
-    const categories = categoryIds.length
+    // ── Category-level buckets ──────────────────────────────────────────────
+    const categoryIds = [...new Set(catGroups.map((g) => g.categoryId).filter(Boolean))];
+    const categoryRecords = categoryIds.length
       ? await prisma.productCategory.findMany({
           where: { id: { in: categoryIds } },
           select: { id: true, name: true, code: true, imageUrl: true },
         })
       : [];
-    const catById = new Map(categories.map((c) => [c.id, c]));
+    const catById = new Map(categoryRecords.map((c) => [c.id, c]));
 
     const byCat = new Map();
-    for (const row of groups) {
+    for (const row of catGroups) {
       const key = row.categoryId ?? 'unassigned';
       if (!byCat.has(key)) {
         const cat = catById.get(row.categoryId);
@@ -162,21 +171,36 @@ export const dashboardService = {
           name: cat?.name ?? 'Uncategorized',
           code: cat?.code ?? '',
           imageUrl: cat?.imageUrl ?? null,
-          total: 0,
-          working: 0,
-          faulty: 0,
-          underMaintenance: 0,
+          total: 0, working: 0, faulty: 0, underMaintenance: 0,
         });
       }
       const bucket = byCat.get(key);
       const n = row._count._all;
       bucket.total += n;
-      if (row.status === 'active')              bucket.working          += n;
-      else if (row.status === 'faulty')         bucket.faulty           += n;
+      if (row.status === 'active')                 bucket.working          += n;
+      else if (row.status === 'faulty')            bucket.faulty           += n;
       else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
     }
 
-    return { categories: [...byCat.values()].sort((a, b) => b.total - a.total) };
+    // ── Product-name-level buckets (across all categories) ─────────────────
+    const byName = new Map();
+    for (const row of nameGroups) {
+      const key = row.name ?? 'Unknown';
+      if (!byName.has(key)) {
+        byName.set(key, { name: key, total: 0, working: 0, faulty: 0, underMaintenance: 0 });
+      }
+      const bucket = byName.get(key);
+      const n = row._count._all;
+      bucket.total += n;
+      if (row.status === 'active')                 bucket.working          += n;
+      else if (row.status === 'faulty')            bucket.faulty           += n;
+      else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
+    }
+
+    return {
+      categories: [...byCat.values()].sort((a, b) => b.total - a.total),
+      products:   [...byName.values()].sort((a, b) => b.total - a.total),
+    };
   },
 
   /**
