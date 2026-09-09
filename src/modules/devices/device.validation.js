@@ -26,7 +26,7 @@ export const createDeviceSchema = z.object({
     companyId: z.string().uuid().optional(),
     zoneId: z.string().uuid().optional(),
     hardwareTypeId: z.string().uuid().optional(),
-    name: z.string().trim().min(1).max(120),
+    name: z.string().trim().min(1).max(120).optional(),
     location: z.string().trim().max(200).optional(),
     unitPrice: z.coerce.number().nonnegative().optional(),
     purchaseDate: z.coerce.date().optional(),
