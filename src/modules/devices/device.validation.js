@@ -59,3 +59,7 @@ export const setDeviceStatusSchema = z.object({
   // under_maintenance / faulty are managed automatically by the domain.
   body: z.object({ status: z.enum(['active', 'retired']) }),
 });
+
+export const uploadDeviceImageSchema = z.object({
+  params: idParam,
+});

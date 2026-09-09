@@ -10,6 +10,7 @@ import {
   deployDeviceSchema,
   updateDeviceSchema,
   setDeviceStatusSchema,
+  uploadDeviceImageSchema,
 } from './device.validation.js';
 
 export const deviceRouter = Router();
@@ -17,7 +18,7 @@ export const deviceRouter = Router();
 // Managing the unit catalogue is an admin action; zone users read + log/raise.
 const canManage = requireRole('super_admin', 'client_admin');
 
-// In-memory upload for Excel/CSV import — capped at 5 MB.
+// In-memory upload — 5 MB cap covers both Excel import and unit images.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Note: units are never hard-deleted — retire them via PATCH /:id/status.
@@ -28,6 +29,8 @@ deviceRouter.patch('/:id', canManage, validate(updateDeviceSchema), deviceContro
 deviceRouter.patch('/:id/status', canManage, validate(setDeviceStatusSchema), deviceController.setStatus);
 // Deploy an in-stock unit into a zone.
 deviceRouter.post('/:id/deploy', canManage, validate(deployDeviceSchema), deviceController.deploy);
+// Upload / replace the image for a unit.
+deviceRouter.post('/:id/image', canManage, validate(uploadDeviceImageSchema), upload.single('file'), deviceController.uploadImage);
 
 // Bulk import (Excel/CSV): download template, then upload with ?dryRun=true to
 // preview or without to commit. Field name: "file".

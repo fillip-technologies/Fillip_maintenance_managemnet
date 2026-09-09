@@ -24,6 +24,10 @@ export const deviceController = {
   setStatus: asyncHandler(async (req, res) => {
     sendSuccess(res, await deviceService.setStatus(req.params.id, req.body.status, req.scope));
   }),
+  uploadImage: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('No file provided');
+    sendSuccess(res, await deviceService.uploadImage(req.params.id, req.file.buffer, req.scope));
+  }),
 
   // --- Bulk import ---
   importTemplate: asyncHandler(async (_req, res) => {

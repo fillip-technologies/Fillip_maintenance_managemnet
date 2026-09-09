@@ -196,6 +196,20 @@ export const deviceService = {
     return prisma.device.update({ where: { id }, data, include: withZone });
   },
 
+  async uploadImage(id, buffer, scope) {
+    await this.getById(id, scope);
+    const { streamToCloudinary } = await import('../../middleware/upload.js');
+    const result = await streamToCloudinary(buffer, {
+      folder: 'fixly/units',
+      resource_type: 'image',
+    });
+    return prisma.device.update({
+      where: { id },
+      data: { imageUrl: result.secure_url },
+      include: withZone,
+    });
+  },
+
   async setStatus(id, toStatus, scope) {
     const device = await this.getById(id, scope);
     const allowed = DEVICE_MANUAL_TRANSITIONS[device.status] ?? [];
