@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess, sendCreated, listPayload } from '../../utils/response.js';
+import { ApiError } from '../../utils/ApiError.js';
 import { clientService } from './client.service.js';
 
 export const clientController = {
@@ -15,6 +16,14 @@ export const clientController = {
   }),
   update: asyncHandler(async (req, res) => {
     sendSuccess(res, await clientService.update(req.params.id, req.body));
+  }),
+  uploadImage: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('No file provided');
+    sendSuccess(res, await clientService.uploadImage(req.params.id, req.file.buffer));
+  }),
+  uploadImageDirect: asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('No file provided');
+    sendSuccess(res, await clientService.uploadDirect(req.file.buffer));
   }),
   remove: asyncHandler(async (req, res) => {
     await clientService.remove(req.params.id);

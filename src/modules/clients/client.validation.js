@@ -48,3 +48,5 @@ export const updateClientSchema = z.object({
 });
 
 export const deleteClientSchema = z.object({ params: idParam });
+
+export const uploadClientImageSchema = z.object({ params: idParam });

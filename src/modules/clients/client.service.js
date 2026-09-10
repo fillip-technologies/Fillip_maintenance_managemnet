@@ -81,6 +81,31 @@ export const clientService = {
     return prisma.client.update({ where: { id }, data });
   },
 
+  async uploadImage(id, buffer) {
+    await this.getById(id);
+    const { streamToCloudinary } = await import('../../middleware/upload.js');
+    const result = await streamToCloudinary(buffer, {
+      folder: 'fixly/clients',
+      resource_type: 'image',
+    });
+    return prisma.client.update({
+      where: { id },
+      data: { imageUrl: result.secure_url },
+    });
+  },
+
+  async uploadDirect(buffer) {
+    const { streamToCloudinary } = await import('../../middleware/upload.js');
+    const result = await streamToCloudinary(buffer, {
+      folder: 'fixly/clients',
+      resource_type: 'image',
+    });
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+    };
+  },
+
   async exportData(id) {
     const client = await prisma.client.findUnique({
       where: { id },
