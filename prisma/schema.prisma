@@ -335,6 +335,8 @@ model IssueStatusHistory {
   changedByUserId String?      @map("changed_by_user_id") @db.Uuid
   changedAt       DateTime     @default(now()) @map("changed_at")
   notes           String?      @db.Text
+  latitude        Decimal?     @db.Decimal(10, 8)
+  longitude       Decimal?     @db.Decimal(11, 8)
 
   issue     Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
   changedBy User? @relation("IssueStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)

@@ -12,6 +12,8 @@ const status = z.enum([
   'closed',
   'reopened',
 ]);
+const coordLatitude = z.coerce.number().min(-90).max(90).optional().nullable();
+const coordLongitude = z.coerce.number().min(-180).max(180).optional().nullable();
 
 export const listIssuesSchema = z.object({
   query: paginationQuery.extend({
@@ -37,6 +39,8 @@ export const createIssueSchema = z.object({
     raisedByUserId: z.string().uuid().optional(),
     priority: priority.default('medium'),
     description: z.string().trim().min(1),
+    latitude: coordLatitude,
+    longitude: coordLongitude,
   }),
 });
 
@@ -56,6 +60,8 @@ export const transitionIssueSchema = z.object({
     status,
     notes: z.string().trim().optional(),
     changedByUserId: z.string().uuid().optional(),
+    latitude: coordLatitude,
+    longitude: coordLongitude,
   }),
 });
 
@@ -83,5 +89,7 @@ export const bulkStatusSchema = z.object({
     ids:   z.array(z.string().uuid()).min(1).max(50),
     status,
     notes: z.string().trim().optional(),
+    latitude: coordLatitude,
+    longitude: coordLongitude,
   }),
 });

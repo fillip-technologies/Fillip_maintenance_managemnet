@@ -26,11 +26,18 @@ export const issueController = {
     sendSuccess(res, await issueService.updateDetails(req.params.id, req.body, req.scope));
   }),
   setStatus: asyncHandler(async (req, res) => {
-    const { status, notes, changedByUserId } = req.body;
+    const { status, notes, changedByUserId, latitude, longitude } = req.body;
     const attachments = await uploadRequestFiles(req);
     sendSuccess(res, await issueService.transition(
       req.params.id,
-      { toStatus: status, notes, changedByUserId, attachments },
+      {
+        toStatus: status,
+        notes,
+        changedByUserId,
+        attachments,
+        latitude: latitude != null ? Number(latitude) : null,
+        longitude: longitude != null ? Number(longitude) : null,
+      },
       req.user,
       req.scope
     ));

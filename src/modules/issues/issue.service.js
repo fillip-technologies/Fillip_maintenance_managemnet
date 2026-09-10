@@ -106,7 +106,7 @@ export const issueService = {
     return issue;
   },
 
-  async create({ deviceId, categoryId, raisedByUserId, priority, description, attachments = [] }, user, scope) {
+  async create({ deviceId, categoryId, raisedByUserId, priority, description, attachments = [], latitude = null, longitude = null }, user, scope) {
     const raiserId = user?.id ?? raisedByUserId;
     if (!raiserId) throw ApiError.badRequest('Raiser could not be determined');
 
@@ -138,7 +138,14 @@ export const issueService = {
         include: detail,
       });
       await tx.issueStatusHistory.create({
-        data: { issueId: created.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
+        data: {
+          issueId: created.id,
+          fromStatus: null,
+          toStatus: 'open',
+          changedByUserId: raiserId,
+          latitude: latitude != null ? latitude : null,
+          longitude: longitude != null ? longitude : null,
+        },
       });
       await reconcileDeviceStatus(tx, deviceId);
       return created;
@@ -152,7 +159,7 @@ export const issueService = {
     return prisma.issue.update({ where: { id }, data, include: detail });
   },
 
-  async transition(id, { toStatus, notes, changedByUserId, attachments = [] }, user, scope) {
+  async transition(id, { toStatus, notes, changedByUserId, attachments = [], latitude = null, longitude = null }, user, scope) {
     const changerId = user?.id ?? changedByUserId;
     if (!changerId) throw ApiError.badRequest('Changer could not be determined');
 
@@ -202,7 +209,15 @@ export const issueService = {
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.issue.update({ where: { id }, data, include: detail });
       await tx.issueStatusHistory.create({
-        data: { issueId: id, fromStatus: issue.status, toStatus, changedByUserId: changerId, notes: notes ?? null },
+        data: {
+          issueId: id,
+          fromStatus: issue.status,
+          toStatus,
+          changedByUserId: changerId,
+          notes: notes ?? null,
+          latitude: latitude != null ? latitude : null,
+          longitude: longitude != null ? longitude : null,
+        },
       });
       await reconcileDeviceStatus(tx, issue.deviceId);
       return result;
@@ -220,7 +235,7 @@ export const issueService = {
     });
   },
 
-  async bulkTransition({ ids, status: toStatus, notes }, user, scope) {
+  async bulkTransition({ ids, status: toStatus, notes, latitude = null, longitude = null }, user, scope) {
     const changerId = user?.id;
     if (!changerId) throw ApiError.badRequest('Changer could not be determined');
 
@@ -229,7 +244,7 @@ export const issueService = {
 
     for (const id of ids) {
       try {
-        const updated = await this.transition(id, { toStatus, notes, changedByUserId: changerId }, user, scope);
+        const updated = await this.transition(id, { toStatus, notes, changedByUserId: changerId, latitude, longitude }, user, scope);
         results.push(updated);
       } catch (err) {
         errors.push({ id, message: err.message });
