@@ -314,6 +314,14 @@ export const dashboardService = {
         select: {
           id: true,
           name: true,
+          facilityName: true,
+          location: true,
+          imageUrl: true,
+          latitude: true,
+          longitude: true,
+          mapX: true,
+          mapY: true,
+          pinColor: true,
           company: { select: { name: true } },
           _count: { select: { zones: true } },
         },
@@ -321,7 +329,7 @@ export const dashboardService = {
       }),
       prisma.device.findMany({
         where: { status: { not: 'retired' } },
-        select: { status: true, zone: { select: { clientId: true } } },
+        select: { status: true, hardwareTypeId: true, categoryId: true, zone: { select: { clientId: true } } },
       }),
       prisma.issue.findMany({
         where: { status: { in: OPEN_ISSUE_STATES } },
@@ -450,13 +458,19 @@ export const dashboardService = {
     };
 
     // ---- Per-client facilities ----
-    const deviceStats = new Map(); // clientId -> { devices, faulty }
+    const deviceStats = new Map(); // clientId -> { devices, working, faulty, underMaintenance, byHardwareType: {} }
     for (const d of deviceClientRows) {
       const cid = d.zone?.clientId;
       if (!cid) continue;
-      const cur = deviceStats.get(cid) ?? { devices: 0, faulty: 0 };
+      const cur = deviceStats.get(cid) ?? { devices: 0, working: 0, faulty: 0, underMaintenance: 0, byHardwareType: {} };
       cur.devices += 1;
-      if (d.status === 'faulty') cur.faulty += 1;
+      if (d.status === 'active') cur.working += 1;
+      else if (d.status === 'faulty') cur.faulty += 1;
+      else if (d.status === 'under_maintenance') cur.underMaintenance += 1;
+
+      if (d.hardwareTypeId) {
+        cur.byHardwareType[d.hardwareTypeId] = (cur.byHardwareType[d.hardwareTypeId] ?? 0) + 1;
+      }
       deviceStats.set(cid, cur);
     }
     const openByClient = new Map();
@@ -465,20 +479,52 @@ export const dashboardService = {
       if (!cid) continue;
       openByClient.set(cid, (openByClient.get(cid) ?? 0) + 1);
     }
+
+    const defaultPins = [
+      { x: 28, y: 62 },
+      { x: 58, y: 53 },
+      { x: 36, y: 48 },
+      { x: 24, y: 30 },
+      { x: 53, y: 70 },
+      { x: 45, y: 40 },
+      { x: 70, y: 65 },
+      { x: 65, y: 35 },
+    ];
+
     const facilities = clientRows
-      .map((c) => {
-        const ds = deviceStats.get(c.id) ?? { devices: 0, faulty: 0 };
+      .map((c, index) => {
+        const ds = deviceStats.get(c.id) ?? { devices: 0, working: 0, faulty: 0, underMaintenance: 0, byHardwareType: {} };
+        const openIssues = openByClient.get(c.id) ?? 0;
+        const operationalStatus =
+          ds.faulty > 0 ? 'Partial Issues'
+          : ds.underMaintenance > 0 ? 'Under Maintenance'
+          : 'Operational';
+
+        const fallbackPin = defaultPins[index % defaultPins.length];
+
         return {
           clientId: c.id,
           name: c.name,
+          facilityName: c.facilityName || c.name,
+          location: c.location || null,
+          imageUrl: c.imageUrl || null,
+          latitude: c.latitude ? Number(c.latitude) : null,
+          longitude: c.longitude ? Number(c.longitude) : null,
+          mapX: c.mapX ?? fallbackPin.x,
+          mapY: c.mapY ?? fallbackPin.y,
+          pinColor: c.pinColor || null,
           companyName: c.company?.name ?? null,
           zones: c._count.zones,
           devices: ds.devices,
+          workingDevices: ds.working,
           faultyDevices: ds.faulty,
-          openIssues: openByClient.get(c.id) ?? 0,
+          underMaintenanceDevices: ds.underMaintenance,
+          byHardwareType: ds.byHardwareType,
+          openIssues,
+          operationalStatus,
         };
       })
-      .sort((a, b) => b.openIssues - a.openIssues);
+      .sort((a, b) => b.devices - a.devices);
 
     // ---- Recent activity ----
     const recentActivity = recentActivityRaw.map((h) => ({

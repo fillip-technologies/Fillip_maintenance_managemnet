@@ -103,6 +103,12 @@ model Client {
   type         String?  @db.VarChar(60)
   facilityName String?  @map("facility_name") @db.VarChar(200)
   location     String?  @map("location") @db.VarChar(200)
+  imageUrl     String?  @map("image_url") @db.Text
+  latitude     Decimal? @db.Decimal(10, 8)
+  longitude    Decimal? @db.Decimal(11, 8)
+  mapX         Float?   @map("map_x")
+  mapY         Float?   @map("map_y")
+  pinColor     String?  @map("pin_color") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
