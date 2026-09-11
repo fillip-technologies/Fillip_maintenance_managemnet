@@ -37,23 +37,29 @@ export function initRealtime(httpServer) {
 
   io.on('connection', async (socket) => {
     const user = socket.data.user;
-    try {
-      if (user.clientId) socket.join(roomForClient(user.clientId));
-      if (user.role === 'super_admin') socket.join(PLATFORM_ROOM);
 
-      // Join every zone the user is actively assigned to; events emitted to a
-      // device's zone + ancestors will reach an incharge assigned higher up.
+    if (user.clientId) socket.join(roomForClient(user.clientId));
+    if (user.role === 'super_admin') socket.join(PLATFORM_ROOM);
+
+    // Join zone rooms derived from the user's active assignments. Failures here
+    // are transient (DB cold start, pool exhaustion) — log and skip rather than
+    // disconnecting, so the client stays connected and receives client-room events.
+    try {
       const assignments = await prisma.zoneAssignment.findMany({
         where: { userId: user.sub, unassignedAt: null },
         select: { zoneId: true },
       });
       assignments.forEach((a) => socket.join(roomForZone(a.zoneId)));
+    } catch (err) {
+      logger.error({ err, userId: user.sub }, 'Zone room join failed — client stays connected without zone rooms');
+    }
 
-      // Technicians are scoped via technician_assignments (client- or
-      // zone-level), NOT zone_assignments — join those coverage rooms too, or a
-      // technician's issue queue would never receive live issue:created /
-      // issue:updated events (screen-flow contract).
-      if (user.technicianId) {
+    // Technicians are scoped via technician_assignments (client- or
+    // zone-level), NOT zone_assignments — join those coverage rooms too, or a
+    // technician's issue queue would never receive live issue:created /
+    // issue:updated events (screen-flow contract).
+    if (user.technicianId) {
+      try {
         const coverage = await prisma.technicianAssignment.findMany({
           where: { technicianId: user.technicianId },
           select: { clientId: true, zoneId: true },
@@ -62,13 +68,9 @@ export function initRealtime(httpServer) {
           if (c.zoneId) socket.join(roomForZone(c.zoneId));
           if (c.clientId) socket.join(roomForClient(c.clientId));
         });
+      } catch (err) {
+        logger.error({ err, technicianId: user.technicianId }, 'Technician room join failed — client stays connected without technician rooms');
       }
-    } catch (err) {
-      logger.error({ err }, 'Socket room join failed — disconnecting client');
-      // Force a clean disconnect so the client retries (with backoff) rather than
-      // sitting connected with no rooms and missing all events.
-      socket.emit('error', { code: 'ROOM_JOIN_FAILED', message: 'Server error; reconnecting…' });
-      socket.disconnect(true);
     }
   });
 
