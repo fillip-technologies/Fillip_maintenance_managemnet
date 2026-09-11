@@ -29,16 +29,7 @@ export const zoneService = {
       take,
       include: { _count: { select: { children: true, devices: true } } },
     });
-
-    // Replace direct device count with full subtree count for each zone
-    const enriched = await Promise.all(
-      items.map(async (zone) => {
-        const subtreeIds = await this.subtreeIds(zone.id);
-        const totalDevices = await prisma.device.count({ where: { zoneId: { in: subtreeIds } } });
-        return { ...zone, _count: { ...zone._count, devices: totalDevices } };
-      })
-    );
-    return { items: enriched, meta };
+    return { items, meta };
   },
 
   // Raw fetch (no scope) — for internal callers like auth login.
@@ -55,9 +46,7 @@ export const zoneService = {
       },
     });
     if (!zone) throw ApiError.notFound('Zone not found');
-    const subtreeIds = await this.subtreeIds(id);
-    const totalDevices = await prisma.device.count({ where: { zoneId: { in: subtreeIds } } });
-    return { ...zone, _count: { ...zone._count, devices: totalDevices } };
+    return zone;
   },
 
   // Scoped fetch for endpoints — 404 if outside the caller's scope.
@@ -74,9 +63,7 @@ export const zoneService = {
       },
     });
     if (!zone) throw ApiError.notFound('Zone not found');
-    const subtreeIds = await this.subtreeIds(id);
-    const totalDevices = await prisma.device.count({ where: { zoneId: { in: subtreeIds } } });
-    return { ...zone, _count: { ...zone._count, devices: totalDevices } };
+    return zone;
   },
 
   /** Full subtree of a zone (including itself), depth-annotated. Reused by the

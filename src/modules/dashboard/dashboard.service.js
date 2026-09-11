@@ -94,36 +94,76 @@ export const dashboardService = {
     const where = await deviceScope(query, authScope);
     const categoryFilter = query.categoryId ? { categoryId: query.categoryId } : {};
 
+    // Load zone hierarchy FIRST, then expand `where` to the full subtree for
+    // zone scope before querying devices. The groups query must run after so
+    // it sees all sub-zone devices, not just those directly in the parent.
+    let allZones;
+    if (query.scope === 'client' && query.id) {
+      allZones = await prisma.zone.findMany({
+        where: { clientId: query.id },
+        select: { id: true, name: true, parentZoneId: true },
+      });
+    } else if (query.scope === 'zone' && query.id) {
+      const subtreeIds = await zoneService.subtreeIds(query.id);
+      Object.assign(where, { zoneId: { in: subtreeIds } });
+      allZones = await prisma.zone.findMany({
+        where: { id: { in: subtreeIds } },
+        select: { id: true, name: true, parentZoneId: true },
+      });
+    } else {
+      return { zones: [] };
+    }
+
     const groups = await prisma.device.groupBy({
       by: ['zoneId', 'status'],
       where: { ...where, ...categoryFilter, status: { not: 'retired' } },
       _count: { _all: true },
     });
 
-    // Resolve names only for the zones that actually appeared.
-    const zoneIds = [...new Set(groups.map((g) => g.zoneId))];
-    const zones = zoneIds.length
-      ? await prisma.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true, name: true } })
-      : [];
-    const nameById = new Map(zones.map((z) => [z.id, z.name]));
+    if (groups.length === 0) return { zones: [] };
+
+    const zoneById = new Map(allZones.map((z) => [z.id, z]));
+
+    // client scope: roll up to the top-level ancestor (parentZoneId === null)
+    function topLevelAncestor(zoneId) {
+      let z = zoneById.get(zoneId);
+      while (z && z.parentZoneId) z = zoneById.get(z.parentZoneId);
+      return z ?? null;
+    }
+
+    // zone scope: find the direct child of scopeId that contains this zone
+    function directChildOfScope(zoneId, scopeId) {
+      if (zoneId === scopeId) return zoneById.get(scopeId) ?? null;
+      let z = zoneById.get(zoneId);
+      while (z) {
+        if (z.parentZoneId === scopeId) return z;
+        if (!z.parentZoneId) break;
+        z = zoneById.get(z.parentZoneId);
+      }
+      return null;
+    }
+
     const byZone = new Map();
     for (const row of groups) {
-      if (!byZone.has(row.zoneId)) {
-        byZone.set(row.zoneId, {
-          zoneId: row.zoneId,
-          zoneName: nameById.get(row.zoneId) ?? 'Unknown',
-          total: 0,
-          working: 0,
-          faulty: 0,
-          underMaintenance: 0,
+      const bucket_zone =
+        query.scope === 'client'
+          ? topLevelAncestor(row.zoneId)
+          : directChildOfScope(row.zoneId, query.id);
+      if (!bucket_zone) continue;
+
+      if (!byZone.has(bucket_zone.id)) {
+        byZone.set(bucket_zone.id, {
+          zoneId: bucket_zone.id,
+          zoneName: bucket_zone.name,
+          total: 0, working: 0, faulty: 0, underMaintenance: 0,
         });
       }
-      const bucket = byZone.get(row.zoneId);
+      const b = byZone.get(bucket_zone.id);
       const n = row._count._all;
-      bucket.total += n;
-      if (row.status === 'active') bucket.working += n;
-      else if (row.status === 'faulty') bucket.faulty += n;
-      else if (row.status === 'under_maintenance') bucket.underMaintenance += n;
+      b.total += n;
+      if (row.status === 'active')             b.working          += n;
+      else if (row.status === 'faulty')        b.faulty           += n;
+      else if (row.status === 'under_maintenance') b.underMaintenance += n;
     }
 
     return { zones: [...byZone.values()].sort((a, b) => b.total - a.total) };
