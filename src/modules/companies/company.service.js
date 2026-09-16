@@ -4,7 +4,7 @@ import { paginate } from '../../utils/pagination.js';
 
 export const companyService = {
   async list({ page, limit, search }) {
-    const where = search ? { name: { contains: search, mode: 'insensitive' } } : {};
+    const where = search ? { name: { contains: search } } : {};
     const total = await prisma.company.count({ where });
     const { skip, take, meta } = paginate({ page, limit }, total);
     const items = await prisma.company.findMany({

@@ -64,17 +64,21 @@ export const productCategoryService = {
 /**
  * Atomically reserve `count` sequential codes for a category and return them.
  * Runs inside the CALLER's transaction (`tx`) so code minting commits with the
- * unit(s). One `UPDATE ... RETURNING` reserves the whole range under a row lock
- * — safe for a single create AND for a bulk import of thousands (no per-row
- * lock contention). Returns `{ codes: [...], categoryCode }`.
+ * unit(s). The `UPDATE` takes an implicit row lock (InnoDB) held until the
+ * transaction commits, so a concurrent reservation for the same category
+ * blocks until this one commits — same effective safety as the Postgres
+ * `UPDATE ... RETURNING` this replaces (MySQL has no `RETURNING`), just
+ * split into an `UPDATE` followed by a `SELECT` of the now-committed values.
+ * Returns `{ codes: [...], categoryCode }`.
  */
 export async function reserveCodes(tx, categoryId, count = 1) {
-  const rows = await tx.$queryRaw`
+  const affected = await tx.$executeRaw`
     UPDATE product_categories
     SET last_seq = last_seq + ${count}
-    WHERE id = ${categoryId}::uuid
-    RETURNING code, last_seq`;
-  if (rows.length === 0) throw ApiError.badRequest('Category does not exist');
+    WHERE id = ${categoryId}`;
+  if (affected === 0) throw ApiError.badRequest('Category does not exist');
+  const rows = await tx.$queryRaw`
+    SELECT code, last_seq FROM product_categories WHERE id = ${categoryId}`;
   const { code, last_seq } = rows[0];
   const end = Number(last_seq);
   const start = end - count + 1;

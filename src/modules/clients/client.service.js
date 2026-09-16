@@ -8,7 +8,7 @@ export const clientService = {
   async list({ page, limit, search, companyId }, scope) {
     const filters = {
       ...(companyId ? { companyId } : {}),
-      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+      ...(search ? { name: { contains: search } } : {}),
     };
     const where = combine(clientScopeWhere(scope), filters);
     const total = await prisma.client.count({ where });

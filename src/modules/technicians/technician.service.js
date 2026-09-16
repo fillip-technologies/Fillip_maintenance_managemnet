@@ -11,7 +11,7 @@ const withUser = { user: { select: { id: true, name: true, email: true, role: tr
 export const technicianService = {
   async list({ page, limit, search }) {
     const where = search
-      ? { user: { name: { contains: search, mode: 'insensitive' } } }
+      ? { user: { name: { contains: search } } }
       : {};
     const total = await prisma.technician.count({ where });
     const { skip, take, meta } = paginate({ page, limit }, total);
@@ -164,11 +164,11 @@ export const technicianService = {
         // Walk the new zone's ancestor chain and check for overlap.
         const ancestors = await prisma.$queryRaw`
           WITH RECURSIVE up AS (
-            SELECT id, parent_zone_id FROM zones WHERE id = ${zoneId}::uuid
+            SELECT id, parent_zone_id FROM zones WHERE id = ${zoneId}
             UNION ALL
             SELECT z.id, z.parent_zone_id FROM zones z JOIN up u ON z.id = u.parent_zone_id
           )
-          SELECT id::text FROM up WHERE id != ${zoneId}::uuid
+          SELECT id FROM up WHERE id != ${zoneId}
         `;
         const ancestorIds = ancestors.map((r) => r.id);
         if (existingZoneIds.some((id) => ancestorIds.includes(id))) {
