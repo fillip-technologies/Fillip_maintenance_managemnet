@@ -17,7 +17,7 @@ export const zoneService = {
       ...(status ? { status } : {}),
       ...(parentZoneId ? { parentZoneId } : {}),
       ...(topLevel === 'true' ? { parentZoneId: null } : {}),
-      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+      ...(search ? { name: { contains: search } } : {}),
     };
     const where = combine(zoneScopeWhere(scope), filters);
     const total = await prisma.zone.count({ where });
@@ -74,12 +74,12 @@ export const zoneService = {
     return prisma.$queryRaw`
       WITH RECURSIVE tree AS (
         SELECT id, name, parent_zone_id, logo_url, status, 0 AS depth
-        FROM zones WHERE id = ${rootId}::uuid
+        FROM zones WHERE id = ${rootId}
         UNION ALL
         SELECT z.id, z.name, z.parent_zone_id, z.logo_url, z.status, t.depth + 1
         FROM zones z JOIN tree t ON z.parent_zone_id = t.id
       )
-      SELECT id, name, parent_zone_id AS "parentZoneId", logo_url AS "logoUrl", status, depth
+      SELECT id, name, parent_zone_id AS parentZoneId, logo_url AS logoUrl, status, depth
       FROM tree ORDER BY depth, name;
     `;
   },
@@ -89,7 +89,7 @@ export const zoneService = {
     return prisma.$queryRaw`
       WITH RECURSIVE up AS (
         SELECT id, name, parent_zone_id, 0 AS depth
-        FROM zones WHERE id = ${zoneId}::uuid
+        FROM zones WHERE id = ${zoneId}
         UNION ALL
         SELECT z.id, z.name, z.parent_zone_id, u.depth + 1
         FROM zones z JOIN up u ON z.id = u.parent_zone_id
@@ -102,7 +102,7 @@ export const zoneService = {
   async subtreeIds(rootId) {
     const rows = await prisma.$queryRaw`
       WITH RECURSIVE tree AS (
-        SELECT id FROM zones WHERE id = ${rootId}::uuid
+        SELECT id FROM zones WHERE id = ${rootId}
         UNION ALL
         SELECT z.id FROM zones z JOIN tree t ON z.parent_zone_id = t.id
       )
@@ -121,7 +121,7 @@ export const zoneService = {
     const clash = await prisma.zone.findFirst({
       where: {
         clientId,
-        name: { equals: name, mode: 'insensitive' },
+        name: { equals: name },
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
       },
       select: { id: true },

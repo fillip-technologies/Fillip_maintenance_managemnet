@@ -194,11 +194,12 @@ const DEVICE_PLAN = [
 ];
 
 async function reserveCode(tx, categoryId, count) {
-  const rows = await tx.$queryRaw`
+  await tx.$executeRaw`
     UPDATE product_categories
     SET last_seq = last_seq + ${count}
-    WHERE id = ${categoryId}::uuid
-    RETURNING code, last_seq`;
+    WHERE id = ${categoryId}`;
+  const rows = await tx.$queryRaw`
+    SELECT code, last_seq FROM product_categories WHERE id = ${categoryId}`;
   const { code, last_seq } = rows[0];
   const end = Number(last_seq);
   const start = end - count + 1;

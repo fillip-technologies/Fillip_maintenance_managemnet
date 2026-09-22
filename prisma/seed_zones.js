@@ -322,7 +322,7 @@ async function main() {
   for (const { name, subZones } of ZONES) {
     // Upsert top-level zone
     let parent = await prisma.zone.findFirst({
-      where: { clientId: CLIENT_ID, name: { equals: name, mode: 'insensitive' }, parentZoneId: null },
+      where: { clientId: CLIENT_ID, name: { equals: name }, parentZoneId: null },
     });
 
     if (parent) {
@@ -342,7 +342,7 @@ async function main() {
         where: {
           clientId: CLIENT_ID,
           parentZoneId: parent.id,
-          name: { equals: subName, mode: 'insensitive' },
+          name: { equals: subName },
         },
       });
 

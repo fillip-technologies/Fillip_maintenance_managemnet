@@ -5,8 +5,8 @@ async function main() {
   const client = await prisma.client.findFirst({
     where: {
       OR: [
-        { name: { contains: 'Rajgir Zoo Safari', mode: 'insensitive' } },
-        { facilityName: { contains: 'Rajgir Zoo Safari', mode: 'insensitive' } },
+        { name: { contains: 'Rajgir Zoo Safari' } },
+        { facilityName: { contains: 'Rajgir Zoo Safari' } },
       ],
     },
     select: { id: true, name: true, facilityName: true, companyId: true },

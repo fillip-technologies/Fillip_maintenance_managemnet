@@ -1,7 +1,7 @@
 {
   "name": "maintenance-management",
   "version": "1.0.0",
-  "description": "Production-grade Node.js + Express + Prisma + PostgreSQL API",
+  "description": "Production-grade Node.js + Express + Prisma + MySQL API",
   "type": "module",
   "main": "src/server.js",
   "engines": {
@@ -16,6 +16,7 @@
     "prisma:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "db:verify": "node scripts/db_verify.mjs",
+    "db:migrate-to-mysql": "node scripts/migrate_to_mysql.mjs",
     "test:unit": "node --test scripts/*.test.mjs"
   },
   "prisma": {
@@ -42,6 +43,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "pg": "^8.13.1",
     "pino-pretty": "^13.0.0",
     "prisma": "^6.2.1"
   }

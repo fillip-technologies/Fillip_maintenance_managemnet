@@ -64,7 +64,7 @@ export const deviceService = {
     const filters = {
       ...(zoneFilter ? { zoneId: zoneFilter } : {}),
       ...(status ? { status } : {}),
-      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+      ...(search ? { name: { contains: search } } : {}),
       // Super-admin org filter: applied on top of the scope (platform scope = no
       // restriction, so companyId is the only filter that narrows the result).
       ...(companyId && scope.platform ? { companyId } : {}),
