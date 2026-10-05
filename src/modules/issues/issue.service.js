@@ -19,7 +19,9 @@ const detail = {
       zoneId: true,
       hardwareTypeId: true,
       imageUrl: true,
-      zone: { select: { id: true, name: true, logoUrl: true } },
+      zone: {
+        select: { id: true, name: true, logoUrl: true, client: { select: { id: true, name: true } } },
+      },
       category: { select: { id: true, name: true, imageUrl: true } },
     },
   },
