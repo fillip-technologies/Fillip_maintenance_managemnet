@@ -27,7 +27,10 @@ export const zoneService = {
       orderBy: { createdAt: 'desc' },
       skip,
       take,
-      include: { _count: { select: { children: true, devices: true } } },
+      include: {
+        client: { select: { id: true, name: true } },
+        _count: { select: { children: true, devices: true } },
+      },
     });
     return { items, meta };
   },
