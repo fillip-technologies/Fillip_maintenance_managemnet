@@ -8,6 +8,7 @@ import { domainEvents } from './events.js';
 
 const roomForZone = (id) => `zone:${id}`;
 const roomForClient = (id) => `client:${id}`;
+const roomForUser = (id) => `user:${id}`;
 const PLATFORM_ROOM = 'platform:all';
 
 /**
@@ -38,6 +39,7 @@ export function initRealtime(httpServer) {
   io.on('connection', async (socket) => {
     const user = socket.data.user;
 
+    socket.join(roomForUser(user.sub));
     if (user.clientId) socket.join(roomForClient(user.clientId));
     if (user.role === 'super_admin') socket.join(PLATFORM_ROOM);
 
@@ -86,13 +88,24 @@ export function initRealtime(httpServer) {
     );
   });
 
+  // Replacement requests: approvers (zone/client/platform rooms) + the requesting technician.
+  domainEvents.on('replacement', ({ type, request }) => {
+    const extra = request?.requestedBy?.id ? [roomForUser(request.requestedBy.id)] : [];
+    broadcastForZone(io, request?.issue?.device?.zoneId, type, request, extra).catch((err) =>
+      logger.error({ err }, 'replacement broadcast failed')
+    );
+  });
+
   logger.info('Realtime (Socket.IO) initialized');
   return io;
 }
 
 /** Emit `event` to the zone, all its ancestors, the owning client, and platform. */
-async function broadcastForZone(io, zoneId, event, payload) {
-  if (!zoneId) return;
+async function broadcastForZone(io, zoneId, event, payload, extraRooms = []) {
+  if (!zoneId) {
+    if (extraRooms.length) io.to([...extraRooms, PLATFORM_ROOM]).emit(event, payload);
+    return;
+  }
   const [ancestors, zone] = await Promise.all([
     zoneService.ancestors(zoneId),
     prisma.zone.findUnique({ where: { id: zoneId }, select: { clientId: true } }),
@@ -100,7 +113,7 @@ async function broadcastForZone(io, zoneId, event, payload) {
 
   const rooms = ancestors.map((a) => roomForZone(a.id));
   if (zone?.clientId) rooms.push(roomForClient(zone.clientId));
-  rooms.push(PLATFORM_ROOM);
+  rooms.push(PLATFORM_ROOM, ...extraRooms);
 
   io.to(rooms).emit(event, payload);
 }

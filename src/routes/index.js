@@ -14,6 +14,7 @@ import { dailyLogRouter } from '../modules/dailyLogs/dailyLog.routes.js';
 import { technicianRouter } from '../modules/technicians/technician.routes.js';
 import { verticalRouter, clientVerticalRouter } from '../modules/verticals/vertical.routes.js';
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js';
+import { replacementRequestRouter } from '../modules/replacementRequests/replacementRequest.routes.js';
 import { productCategoryRouter } from '../modules/productCategories/productCategory.routes.js';
 import { productTypeRouter } from '../modules/productTypes/productType.routes.js';
 
@@ -44,6 +45,7 @@ apiRouter.use('/hardware-types', hardwareTypeRouter);
 apiRouter.use('/issue-categories', issueCategoryRouter);
 apiRouter.use('/devices', deviceRouter);
 apiRouter.use('/issues', issueRouter);
+apiRouter.use('/replacement-requests', replacementRequestRouter);
 apiRouter.use('/daily-logs', dailyLogRouter);
 apiRouter.use('/technicians', technicianRouter);
 apiRouter.use('/dashboard', dashboardRouter);

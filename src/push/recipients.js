@@ -91,3 +91,40 @@ export function notificationForEvent({ type, issue }) {
 
   return null;
 }
+
+/**
+ * Replacement-request events → push. Audience keywords here are `approvers`
+ * (org head + super admin) and `technician` (the requester); resolved in
+ * notifier.js. Pure, so it is unit-testable without a database.
+ */
+export function notificationForReplacementEvent({ type, request }) {
+  if (!request) return null;
+  const label = `${request.issue?.device?.name ?? 'Device'}: ${request.issue?.category?.name ?? 'issue'}`;
+  const data = { issueId: request.issueId, requestId: request.id };
+
+  switch (type) {
+    case DOMAIN_EVENT.REPLACEMENT_REQUESTED:
+      return {
+        audiences: ['approvers'],
+        title: 'Replacement approval needed',
+        body: `${request.requestedBy?.name ?? 'A technician'} requests a replacement — ${label}`,
+        data: { ...data, type: 'replacement_requested' },
+      };
+    case DOMAIN_EVENT.REPLACEMENT_APPROVED:
+      return {
+        audiences: ['technician'],
+        title: 'Replacement approved',
+        body: `You can now replace the equipment — ${label}`,
+        data: { ...data, type: 'replacement_approved' },
+      };
+    case DOMAIN_EVENT.REPLACEMENT_REJECTED:
+      return {
+        audiences: ['technician'],
+        title: 'Replacement rejected',
+        body: request.reviewNote ? `${label} — ${request.reviewNote}` : label,
+        data: { ...data, type: 'replacement_rejected' },
+      };
+    default:
+      return null;
+  }
+}

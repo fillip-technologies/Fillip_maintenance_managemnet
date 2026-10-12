@@ -3,7 +3,7 @@ import { logger } from '../config/logger.js';
 import { domainEvents } from '../realtime/events.js';
 import { zoneService } from '../modules/zones/zone.service.js';
 import { sendToTokens } from './provider.js';
-import { AUDIENCE, notificationForEvent } from './recipients.js';
+import { AUDIENCE, notificationForEvent, notificationForReplacementEvent } from './recipients.js';
 
 /**
  * Resolve an audience keyword to a set of user ids for a given issue.
@@ -116,6 +116,53 @@ export async function handleIssueEvent(
 }
 
 /**
+ * Push for replacement-request events. Approvers (org head of the device's
+ * client/company + every active super admin) hear about new requests; the
+ * requesting technician hears about the decision.
+ */
+export async function handleReplacementEvent(
+  { type, request },
+  { db = prisma, send = sendToTokens } = {}
+) {
+  const notification = notificationForReplacementEvent({ type, request });
+  if (!notification) return { sent: 0, userIds: [] };
+
+  const ids = new Set();
+  if (notification.audiences.includes('technician') && request.requestedBy?.id) {
+    ids.add(request.requestedBy.id);
+  }
+  if (notification.audiences.includes('approvers')) {
+    const device = request.issue?.device;
+    const clientId = device?.zone?.client?.id ?? null;
+    const OR = [{ role: 'super_admin' }];
+    if (clientId) OR.push({ role: 'client_admin', clientId });
+    else if (device?.companyId) OR.push({ role: 'client_admin', companyId: device.companyId });
+    const users = await db.user.findMany({
+      where: { accountStatus: 'active', OR },
+      select: { id: true },
+    });
+    users.forEach((u) => ids.add(u.id));
+  }
+  const userIds = [...ids];
+  if (userIds.length === 0) return { sent: 0, userIds };
+
+  const tokens = await db.deviceToken.findMany({
+    where: { userId: { in: userIds } },
+    select: { token: true },
+  });
+  if (tokens.length === 0) return { sent: 0, userIds };
+
+  const { sent, invalidTokens } = await send(
+    tokens.map((t) => t.token),
+    { title: notification.title, body: notification.body, data: notification.data }
+  );
+  if (invalidTokens.length) {
+    await db.deviceToken.deleteMany({ where: { token: { in: invalidTokens } } });
+  }
+  return { sent, userIds };
+}
+
+/**
  * Subscribe the push layer to the domain event bus. Errors are swallowed (and
  * logged) so a push failure never breaks the originating request or the
  * realtime broadcast that shares the same event.
@@ -123,6 +170,11 @@ export async function handleIssueEvent(
 export function initPushNotifier() {
   domainEvents.on('issue', (payload) => {
     handleIssueEvent(payload).catch((err) => logger.error({ err }, 'Push handler failed'));
+  });
+  domainEvents.on('replacement', (payload) => {
+    handleReplacementEvent(payload).catch((err) =>
+      logger.error({ err }, 'Replacement push handler failed')
+    );
   });
   logger.info('Push notifier subscribed to domain events');
 }

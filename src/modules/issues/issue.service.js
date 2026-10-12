@@ -30,6 +30,14 @@ const detail = {
   assignedTechnician: {
     select: { id: true, specialization: true, user: { select: { id: true, name: true } } },
   },
+  // Non-empty while a technician's replacement request awaits admin approval —
+  // clients use it to block resolve/close and show "awaiting approval".
+  replacementRequests: {
+    where: { status: 'pending' },
+    select: { id: true, status: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+  },
 };
 
 export const issueService = {
@@ -185,6 +193,22 @@ export const issueService = {
         undefined,
         'INVALID_TRANSITION'
       );
+    }
+
+    // An issue awaiting replacement approval can't be finished — the admin must
+    // approve (then the technician completes the replacement) or reject first.
+    if (['resolved', 'closed'].includes(toStatus)) {
+      const pending = await prisma.replacementRequest.findFirst({
+        where: { issueId: id, status: 'pending' },
+        select: { id: true },
+      });
+      if (pending) {
+        throw ApiError.conflict(
+          'This issue is awaiting replacement approval and cannot be resolved or closed yet',
+          { requestId: pending.id },
+          'REPLACEMENT_PENDING'
+        );
+      }
     }
 
     // Append new attachments to any previously stored ones.

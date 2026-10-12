@@ -72,6 +72,14 @@ enum IssueStatus {
   reopened
 }
 
+enum ReplacementRequestStatus {
+  pending
+  approved
+  rejected
+  completed
+  cancelled
+}
+
 enum DailyStatus {
   working
   not_working
@@ -214,12 +222,12 @@ model HardwareType {
 // (owned by a company, not yet deployed to a zone); deploying assigns a zone.
 model Device {
   id             String       @id @default(uuid()) @db.Char(36)
-  companyId      String?      @map("company_id") @db.Char(36)   // owning organization (set even in stock)
-  zoneId         String?      @map("zone_id") @db.Char(36)      // null = in stock (not deployed)
+  companyId      String?      @map("company_id") @db.Char(36) // owning organization (set even in stock)
+  zoneId         String?      @map("zone_id") @db.Char(36) // null = in stock (not deployed)
   categoryId     String?      @map("category_id") @db.Char(36)
   productTypeId  String?      @map("product_type_id") @db.Char(36)
   hardwareTypeId String?      @map("hardware_type_id") @db.Char(36)
-  code           String?      @unique @db.VarChar(40)        // system-generated unique id, e.g. CAM-000123
+  code           String?      @unique @db.VarChar(40) // system-generated unique id, e.g. CAM-000123
   name           String       @db.VarChar(120)
   location       String?      @db.VarChar(200)
   unitPrice      Decimal?     @map("unit_price") @db.Decimal(12, 2)
@@ -270,11 +278,11 @@ model ProductCategory {
 }
 
 model ProductType {
-  id         String          @id @default(uuid()) @db.Char(36)
-  categoryId String          @map("category_id") @db.Char(36)
-  name       String          @db.VarChar(120)
-  imageUrl   String?         @map("image_url") @db.Text
-  createdAt  DateTime        @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Char(36)
+  categoryId String   @map("category_id") @db.Char(36)
+  name       String   @db.VarChar(120)
+  imageUrl   String?  @map("image_url") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
 
   category ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   devices  Device[]
@@ -320,11 +328,12 @@ model Issue {
   resolvedAt           DateTime?     @map("resolved_at")
   closedAt             DateTime?     @map("closed_at")
 
-  device             Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  category           IssueCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  raisedBy           User?                @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id], onDelete: SetNull)
-  assignedTechnician Technician?          @relation(fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
-  statusHistory      IssueStatusHistory[]
+  device              Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  category            IssueCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  raisedBy            User?                @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id], onDelete: SetNull)
+  assignedTechnician  Technician?          @relation(fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
+  statusHistory       IssueStatusHistory[]
+  replacementRequests ReplacementRequest[]
 
   @@index([status, assignedTechnicianId])
   @@index([deviceId, status])
@@ -347,6 +356,41 @@ model IssueStatusHistory {
 
   @@index([issueId])
   @@map("issue_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// Replacement requests: a technician asks to decommission/replace a unit; the
+// org head (client_admin) or CEO (super_admin) must approve before the
+// technician may carry out the replacement and resolve the issue.
+// ---------------------------------------------------------------------------
+
+model ReplacementRequest {
+  id                String                   @id @default(uuid()) @db.Char(36)
+  issueId           String                   @map("issue_id") @db.Char(36)
+  requestedByUserId String?                  @map("requested_by_user_id") @db.Char(36)
+  reviewedByUserId  String?                  @map("reviewed_by_user_id") @db.Char(36)
+  status            ReplacementRequestStatus @default(pending)
+  // physical_damage | burnt_water | unrepairable | obsolete
+  reason            String                   @db.VarChar(40)
+  // in_stock | new_device | none
+  replacementChoice String                   @map("replacement_choice") @db.VarChar(20)
+  spareDeviceId     String?                  @map("spare_device_id") @db.Char(36)
+  spareDeviceName   String?                  @map("spare_device_name") @db.VarChar(160)
+  spareDeviceCode   String?                  @map("spare_device_code") @db.VarChar(60)
+  notes             String?                  @db.Text
+  reviewNote        String?                  @map("review_note") @db.Text
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  reviewedAt        DateTime?                @map("reviewed_at")
+  completedAt       DateTime?                @map("completed_at")
+
+  issue       Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  requestedBy User? @relation("ReplacementRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy  User? @relation("ReplacementReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, status])
+  @@index([status])
+  @@index([requestedByUserId])
+  @@map("replacement_requests")
 }
 
 // ---------------------------------------------------------------------------
@@ -426,15 +470,17 @@ model User {
   company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
-  technicianProfile  Technician?
-  createdZones       Zone[]               @relation("ZoneCreatedBy")
-  zoneAssignments    ZoneAssignment[]
-  addedDevices       Device[]             @relation("DeviceAddedBy")
-  raisedIssues       Issue[]              @relation("IssueRaisedBy")
-  issueStatusChanges IssueStatusHistory[] @relation("IssueStatusChangedBy")
-  dailyStatusLogs    DailyStatusLog[]     @relation("DailyLogLoggedBy")
-  refreshTokens      RefreshToken[]
-  deviceTokens       DeviceToken[]
+  technicianProfile    Technician?
+  createdZones         Zone[]               @relation("ZoneCreatedBy")
+  zoneAssignments      ZoneAssignment[]
+  addedDevices         Device[]             @relation("DeviceAddedBy")
+  raisedIssues         Issue[]              @relation("IssueRaisedBy")
+  issueStatusChanges   IssueStatusHistory[] @relation("IssueStatusChangedBy")
+  dailyStatusLogs      DailyStatusLog[]     @relation("DailyLogLoggedBy")
+  refreshTokens        RefreshToken[]
+  deviceTokens         DeviceToken[]
+  replacementRequested ReplacementRequest[] @relation("ReplacementRequestedBy")
+  replacementReviewed  ReplacementRequest[] @relation("ReplacementReviewedBy")
 
   @@index([companyId])
   @@index([clientId])
