@@ -50,28 +50,44 @@ export const authService = {
     const technicianId = user.technicianProfile?.id ?? null;
     const tokens = await issueTokens(user, technicianId);
 
-    // Primary zone + its tree, for zone-scoped clients (cached client-side).
-    // ZoneAssignment covers zone_incharge / zone_staff.
+    // Assigned zones + their trees, for zone-scoped clients (cached client-side).
+    // ZoneAssignment covers zone_incharge / zone_staff and may hold several zones.
     // TechnicianAssignment covers technicians (separate table, optional zoneId).
-    const [assignment, techAssignment] = await Promise.all([
-      prisma.zoneAssignment.findFirst({
+    // The oldest assignment stays the "primary" zone (`zoneId`) for older clients.
+    const [assignments, techAssignment] = await Promise.all([
+      prisma.zoneAssignment.findMany({
         where: { userId: user.id, unassignedAt: null },
         orderBy: { assignedAt: 'asc' },
-        include: { zone: { select: { logoUrl: true, name: true } } },
+        include: { zone: { select: { id: true, logoUrl: true, name: true } } },
       }),
       technicianId
         ? prisma.technicianAssignment.findFirst({
             where: { technicianId, zoneId: { not: null } },
-            include: { zone: { select: { logoUrl: true, name: true } } },
+            include: { zone: { select: { id: true, logoUrl: true, name: true } } },
           })
         : null,
     ]);
-    const zoneId = assignment?.zoneId ?? techAssignment?.zoneId ?? null;
-    const zoneLogoUrl = assignment?.zone?.logoUrl ?? techAssignment?.zone?.logoUrl ?? null;
-    const zoneName = assignment?.zone?.name ?? techAssignment?.zone?.name ?? null;
-    const [zoneDescendants, zoneAncestors] = zoneId
-      ? await Promise.all([zoneService.descendants(zoneId), zoneService.ancestors(zoneId)])
-      : [[], []];
+
+    const zones = [];
+    const seenZones = new Set();
+    for (const z of [...assignments.map((a) => a.zone), techAssignment?.zone]) {
+      if (z && !seenZones.has(z.id)) {
+        seenZones.add(z.id);
+        zones.push({ id: z.id, name: z.name, logoUrl: z.logoUrl ?? null });
+      }
+    }
+    const primary = zones[0] ?? null;
+    const zoneId = primary?.id ?? null;
+    const zoneLogoUrl = primary?.logoUrl ?? null;
+    const zoneName = primary?.name ?? null;
+
+    const [descSets, ancSets] = await Promise.all([
+      Promise.all(zones.map((z) => zoneService.descendants(z.id))),
+      Promise.all(zones.map((z) => zoneService.ancestors(z.id))),
+    ]);
+    const mergeById = (sets) => [...new Map(sets.flat().map((r) => [r.id, r])).values()];
+    const zoneDescendants = mergeById(descSets);
+    const zoneAncestors = mergeById(ancSets);
 
     // Include client/company name so the frontend can show it immediately.
     let clientName = null;
@@ -92,6 +108,7 @@ export const authService = {
         zoneId,
         zoneLogoUrl,
         zoneName,
+        zones,
       },
       zoneDescendants,
       zoneAncestors,
