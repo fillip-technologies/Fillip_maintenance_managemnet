@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma.js';
+import { env } from '../../../config/env.js';
 import { requirePermission } from '../auth/middleware.js';
 import { withAccess } from '../auth/access.js';
 import { handle, validate } from '../http/request.js';
@@ -83,5 +84,44 @@ stockRouter.get(
         quantity: g._count._all,
       })),
     });
+  }),
+);
+
+// Places away from the store tiers: an outside service centre, a scrap yard, a second warehouse.
+stockRouter.post(
+  '/stock-locations',
+  requirePermission(P.SETUP_MANAGE),
+  validate(z.object({
+    body: z.object({
+      code: z.string().trim().min(1).max(40),
+      name: z.string().trim().min(1).max(160),
+      location_type: z.enum(['platform_warehouse', 'service_center', 'disposal', 'vendor']),
+      vendor_id: z.string().uuid().optional(),
+      address: z.string().trim().max(2000).optional(),
+    }),
+  })),
+  withAccess(P.SETUP_MANAGE),
+  handle(async (req, res) => {
+    if (!req.access.all) throw notFound('stock location');
+    const b = req.input.body;
+    const row = await prisma.stockLocation.create({
+      data: { organizationId: env.FBOS_ORGANIZATION_ID ?? null, code: b.code, name: b.name, locationType: b.location_type, vendorId: b.vendor_id ?? null, address: b.address ?? null },
+    });
+    res.status(201).json(wire.stockLocation(row));
+  }),
+);
+
+stockRouter.patch(
+  '/stock-locations/:id',
+  requirePermission(P.SETUP_MANAGE),
+  validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ name: z.string().trim().min(1).max(160).optional(), address: z.string().trim().max(2000).nullable().optional(), is_active: z.boolean().optional() }) })),
+  withAccess(P.SETUP_MANAGE),
+  handle(async (req, res) => {
+    const location = await locationInScope(req.access, req.params.id);
+    const b = req.input.body;
+    res.json(wire.stockLocation(await prisma.stockLocation.update({
+      where: { id: location.id },
+      data: { ...(b.name ? { name: b.name } : {}), ...(b.address !== undefined ? { address: b.address } : {}), ...(b.is_active !== undefined ? { isActive: b.is_active } : {}) },
+    })));
   }),
 );

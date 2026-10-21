@@ -2,6 +2,7 @@ import { env } from '../../../config/env.js';
 import { ApiError } from '../../../utils/ApiError.js';
 import {
   ZONE_STATES,
+  ZONE_OR_STORE_STATES,
   STOCK_STATES,
   canTransition,
   placementError,
@@ -196,7 +197,10 @@ export async function changeDeviceState(tx, deviceId, change) {
 
   const pick = (key, current) => (Object.prototype.hasOwnProperty.call(change, key) ? change[key] : current);
   const zoneId = ZONE_STATES.includes(to) ? pick('zoneId', device.zoneId) : null;
-  const locationId = ZONE_STATES.includes(to) ? null : pick('locationId', device.currentLocationId);
+  // A faulty unit still in its zone has no store; pulled into a store it has no zone.
+  const locationId = ZONE_STATES.includes(to) && (zoneId || !ZONE_OR_STORE_STATES.includes(to))
+    ? null
+    : pick('locationId', device.currentLocationId);
   const companyId = pick('companyId', device.companyId);
   let clientId = pick('clientId', device.currentClientId);
   if (zoneId && !Object.prototype.hasOwnProperty.call(change, 'clientId')) {
@@ -210,7 +214,7 @@ export async function changeDeviceState(tx, deviceId, change) {
   }
 
   let installation = null;
-  if (zoneId !== device.zoneId || !ZONE_STATES.includes(to)) {
+  if (zoneId !== device.zoneId || !zoneId) {
     ({ installation } = await moveInstallation(tx, device, {
       zoneId,
       clientId,
@@ -247,7 +251,8 @@ export async function changeDeviceState(tx, deviceId, change) {
     companyId,
     clientId,
     referenceType: change.referenceType ?? null,
-    referenceId: change.referenceId ?? null,
+    // An install's event points at the installation it just opened.
+    referenceId: change.referenceId ?? (change.referenceType === 'installation' ? installation?.id ?? null : null),
     actorUserId: change.actorUserId ?? null,
     notes: change.notes ?? null,
   });

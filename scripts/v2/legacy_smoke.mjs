@@ -58,9 +58,11 @@ async function main() {
   const token = login.json?.data?.accessToken;
   const devices = await req('GET', '/devices?limit=5', { token });
   check('GET /devices 200', devices.status === 200, `got ${devices.status}`);
-  // 445 from the dump, plus one unit per earlier run of this script.
-  const smokeUnits = await prisma.device.count({ where: { name: 'Smoke test camera' } });
-  check('445 dump devices listed', devices.json?.data?.totalItems === 445 + smokeUnits, `totalItems=${devices.json?.data?.totalItems}`);
+  // The dump's 445, plus units later tests and earlier runs of this script added.
+  const allDevices = await prisma.device.count();
+  const dumpDevices = await prisma.device.count({ where: { goodsReceiptId: null, name: { not: 'Smoke test camera' } } });
+  check('the 445 dump devices are still there', dumpDevices === 445, `dump devices=${dumpDevices}`);
+  check('the legacy list shows every device', devices.json?.data?.totalItems === allDevices, `totalItems=${devices.json?.data?.totalItems} db=${allDevices}`);
   const first = await prisma.device.findFirst({ where: { name: { not: 'Smoke test camera' }, lifecycleState: 'installed' } });
   check('GET /devices/:id 200', (await req('GET', `/devices/${first.id}`, { token })).status === 200);
   for (const path of ['/zones?limit=5', '/issues?limit=5', '/replacement-requests?limit=5', '/companies', '/clients', '/technicians']) {

@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../../../lib/prisma.js';
 import { requirePermission } from '../auth/middleware.js';
 import { withAccess } from '../auth/access.js';
-import { handle, validate } from '../http/request.js';
+import { handle, validate, ifMatchVersion } from '../http/request.js';
 import { pageQuery, pageWindow, pageOf } from '../http/page.js';
-import { notFound } from '../http/errors.js';
+import { InventoryError, notFound } from '../http/errors.js';
+import { Prisma } from '@prisma/client';
 import * as wire from '../http/serialize.js';
 import { P } from '../permissions.js';
 
@@ -188,5 +189,41 @@ devicesRouter.post(
       data: { deviceId: req.params.id, documentId: b.document_id, docType: b.doc_type, title: b.title ?? null, uploadedByUserId: req.actor.userId },
     });
     res.status(201).json(wire.deviceDocument(doc));
+  }),
+);
+
+// Identity details only; where a device is changes through transfers and installations.
+devicesRouter.patch(
+  '/devices/:id',
+  requirePermission(P.DEVICE_WRITE),
+  validate(z.object({
+    params: id,
+    body: z.object({
+      name: z.string().trim().min(1).max(120).optional(),
+      serial_number: z.string().trim().min(1).max(120).nullable().optional(),
+      mac_address: z.string().trim().max(40).nullable().optional(),
+      barcode: z.string().trim().max(120).nullable().optional(),
+      condition: z.enum(['new', 'good', 'refurbished', 'damaged', 'unknown']).optional(),
+      device_model_id: z.string().uuid().optional(),
+      spec: z.record(z.any()).nullable().optional(),
+    }).refine((b) => Object.keys(b).length > 0, 'Send at least one field'),
+  })),
+  withAccess(P.DEVICE_WRITE),
+  handle(async (req, res) => {
+    const device = await deviceInScope(req.access, req.params.id, {});
+    const expected = ifMatchVersion(req);
+    if (expected === undefined) throw new InventoryError(428, 'IF_MATCH_REQUIRED', 'Send If-Match with the device version you edited');
+    const b = req.input.body;
+    const data = Object.fromEntries(Object.entries({
+      name: b.name, serialNumber: b.serial_number, macAddress: b.mac_address, barcode: b.barcode, condition: b.condition,
+      deviceModelId: b.device_model_id, customSpec: b.spec === null ? Prisma.DbNull : b.spec,
+    }).filter(([, v]) => v !== undefined));
+    // The version check and the write are one statement, so a concurrent edit loses cleanly.
+    const { count } = await prisma.device.updateMany({ where: { id: device.id, version: expected }, data: { ...data, version: { increment: 1 } } });
+    if (count === 0) {
+      throw new InventoryError(409, 'VERSION_MISMATCH', 'Someone else changed this device. Reload and try again.', { meta: { expected_version: expected, current_version: device.version } });
+    }
+    const updated = await deviceInScope(req.access, device.id);
+    res.set('ETag', `"${updated.version}"`).json(wire.device(updated, req.actor));
   }),
 );

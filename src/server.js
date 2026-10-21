@@ -7,12 +7,16 @@ import { issueService } from './modules/issues/issue.service.js';
 import { initRealtime } from './realtime/socket.js';
 import { initPush } from './push/provider.js';
 import { initPushNotifier } from './push/notifier.js';
+import { startOutboxWorker } from './modules/inventory/services/outbox.js';
 
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
   logger.info(`🚀 Server listening on port ${env.PORT} [${env.NODE_ENV}]`);
 });
+
+// Fixly v2: send inventory notifications to FBOS Communication (outbox rows).
+if (env.OUTBOX_WORKER_ENABLED) startOutboxWorker();
 
 /**
  * Close `resolved` issues that have sat undisputed for AUTO_CLOSE_DAYS. Goes

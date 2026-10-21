@@ -222,3 +222,96 @@ export function deviceDocument(d) {
 }
 
 export { iso, day, money };
+
+export function purchaseOrder(po, actor) {
+  const cost = canSeeCost(actor);
+  return {
+    id: po.id,
+    po_number: po.poNumber,
+    vendor: po.vendor ? { id: po.vendor.id, name: po.vendor.name } : { id: po.vendorId, name: null },
+    status: po.status,
+    order_date: day(po.orderDate),
+    expected_date: day(po.expectedDate),
+    currency: po.currency,
+    subtotal: cost ? money(po.subtotal, po.currency) : undefined,
+    tax_total: cost ? money(po.taxTotal, po.currency) : undefined,
+    total_amount: cost ? money(po.totalAmount, po.currency) : undefined,
+    notes: po.notes ?? null,
+    items: (po.items ?? []).map((i) => ({
+      id: i.id,
+      device_model: i.deviceModel ? { id: i.deviceModel.id, name: i.deviceModel.name, manufacturer: i.deviceModel.manufacturer } : { id: i.deviceModelId },
+      quantity_ordered: i.quantityOrdered,
+      quantity_received: i.quantityReceived,
+      unit_price: cost ? money(i.unitPrice, po.currency) : undefined,
+      tax_percent: Number(i.taxPercent).toFixed(2),
+      line_total: cost ? money(i.lineTotal, po.currency) : undefined,
+    })),
+    receipts: (po.receipts ?? []).map((r) => ({ id: r.id, grn_number: r.grnNumber, status: r.status, received_at: iso(r.receivedAt) })),
+    created_by_user_id: po.createdByUserId ?? null,
+    approved_by_user_id: po.approvedByUserId ?? null,
+    approved_at: iso(po.approvedAt),
+    version: po.version,
+    created_at: iso(po.createdAt),
+  };
+}
+
+export function goodsReceipt(g) {
+  return {
+    id: g.id,
+    grn_number: g.grnNumber,
+    purchase_order: g.purchaseOrder ? { id: g.purchaseOrder.id, po_number: g.purchaseOrder.poNumber, vendor: g.purchaseOrder.vendor } : { id: g.purchaseOrderId },
+    receiving_location: g.receivingLocation
+      ? { id: g.receivingLocation.id, name: g.receivingLocation.name, location_type: g.receivingLocation.locationType }
+      : { id: g.receivingLocationId },
+    status: g.status,
+    vendor_invoice_no: g.vendorInvoiceNo ?? null,
+    delivery_challan_no: g.deliveryChallanNo ?? null,
+    received_at: iso(g.receivedAt),
+    received_by_user_id: g.receivedByUserId ?? null,
+    notes: g.notes ?? null,
+    items: (g.items ?? []).map((i) => ({
+      id: i.id,
+      purchase_order_item_id: i.purchaseOrderItemId,
+      quantity_received: i.quantityReceived,
+      quantity_accepted: i.quantityAccepted,
+      quantity_rejected: i.quantityRejected,
+      rejection_reason: i.rejectionReason ?? null,
+    })),
+    devices: (g.devices ?? []).map((d) => ({ id: d.id, code: d.code, serial_number: d.serialNumber })),
+  };
+}
+
+const end = (l) => (l ? { id: l.id, name: l.name, location_type: l.locationType, customer_id: l.companyId ?? null, site_id: l.clientId ?? null } : null);
+
+export function stockTransfer(t) {
+  return {
+    id: t.id,
+    transfer_number: t.transferNumber,
+    transfer_type: t.transferType,
+    status: t.status,
+    from_location: end(t.fromLocation) ?? { id: t.fromLocationId },
+    to_location: end(t.toLocation) ?? { id: t.toLocationId },
+    challan_no: t.challanNo ?? null,
+    carrier: t.carrier ?? null,
+    tracking_number: t.trackingNumber ?? null,
+    notes: t.notes ?? null,
+    items: (t.items ?? []).map((i) => ({
+      id: i.id,
+      device: i.device ? { id: i.device.id, code: i.device.code, name: i.device.name, serial_number: i.device.serialNumber ?? null, lifecycle_state: i.device.lifecycleState } : { id: i.deviceId },
+      item_status: i.itemStatus,
+      condition_out: i.conditionOut ?? null,
+      condition_in: i.conditionIn ?? null,
+      notes: i.notes ?? null,
+    })),
+    ...(t._count ? { item_count: t._count.items } : {}),
+    requested_by_user_id: t.requestedByUserId ?? null,
+    approved_by_user_id: t.approvedByUserId ?? null,
+    dispatched_by_user_id: t.dispatchedByUserId ?? null,
+    received_by_user_id: t.receivedByUserId ?? null,
+    approved_at: iso(t.approvedAt),
+    dispatched_at: iso(t.dispatchedAt),
+    received_at: iso(t.receivedAt),
+    version: t.version,
+    created_at: iso(t.createdAt),
+  };
+}

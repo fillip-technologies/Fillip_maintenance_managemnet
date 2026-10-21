@@ -7,6 +7,8 @@
 
 export const STOCK_STATES = ['in_platform_stock', 'reserved', 'in_company_stock', 'in_client_stock'];
 export const ZONE_STATES = ['installed', 'under_maintenance', 'faulty', 'pending_replacement'];
+// Of those, the ones a device may also be in after it was pulled into a store (design doc §5).
+export const ZONE_OR_STORE_STATES = ['faulty', 'pending_replacement'];
 // Held at a stock location that is not a store tier (service centre, vendor, any store for retired).
 export const AWAY_STATES = ['under_repair', 'at_vendor_rma', 'retired'];
 export const PLACELESS_STATES = ['in_transit', 'lost', 'disposed'];
@@ -42,6 +44,11 @@ export function canTransition(from, to) {
  * Returns an error message, or null when the placement is valid.
  */
 export function placementError(state, { zoneId, locationId }) {
+  if (ZONE_OR_STORE_STATES.includes(state)) {
+    if (zoneId && locationId) return `A ${state} device is in a zone or at a stock location, not both`;
+    if (!zoneId && !locationId) return `A ${state} device must be in a zone or at a stock location`;
+    return null;
+  }
   if (ZONE_STATES.includes(state)) {
     if (!zoneId) return `A ${state} device must be in a zone`;
     if (locationId) return `A ${state} device cannot also sit at a stock location`;
@@ -98,5 +105,25 @@ export function legacyStatusFor(state) {
       return 'retired';
     default:
       return 'provisioned'; // stock, transit, repair: "not deployed" to the v1 apps
+  }
+}
+
+/** The state a device is in while it sits at a location of this type. */
+export function stateAtLocation(locationType) {
+  switch (locationType) {
+    case 'platform_warehouse':
+      return 'in_platform_stock';
+    case 'company_store':
+      return 'in_company_stock';
+    case 'client_store':
+      return 'in_client_stock';
+    case 'service_center':
+      return 'under_repair';
+    case 'vendor':
+      return 'at_vendor_rma';
+    case 'disposal':
+      return 'retired';
+    default:
+      return null;
   }
 }
