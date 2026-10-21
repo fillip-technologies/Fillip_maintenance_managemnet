@@ -21,7 +21,8 @@ import { reportsRouter } from './routes/reports.js';
  * `inventory.*` permission (scripts/inventory_routes.test.mjs fails otherwise),
  * errors and pages use FBOS shapes.
  */
-export const OPEN_PATHS = ['/health', '/ready'];
+// /me shows only the caller's own permissions (signed in, no permission needed).
+export const OPEN_PATHS = ['/health', '/ready', '/me'];
 
 export function inventoryRouter() {
   const router = Router();
@@ -48,6 +49,19 @@ export function inventoryRouter() {
   router.use(internalRouter);
 
   router.use(authenticateActor);
+  router.get('/me', (req, res) => {
+    const a = req.actor;
+    res.json({
+      platform: a.platform ?? 'fbos',
+      user_id: a.userId ?? null,
+      legacy_user_id: a.legacyUserId ?? null,
+      name: a.name,
+      role: a.role ?? a.userType,
+      technician_id: a.technicianId ?? null,
+      permissions: a.isSuperuser && a.platform !== 'fixly' ? ['*'] : [...a.permissions].sort(),
+      own_records_only: [...(a.ownRecordsOnly ?? [])].sort(),
+    });
+  });
   router.use(organizationRouter);
   router.use(catalogRouter);
   router.use(stockRouter);

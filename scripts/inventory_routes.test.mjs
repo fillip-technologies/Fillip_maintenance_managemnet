@@ -29,8 +29,8 @@ test('every inventory route is guarded unless it is meant to be open', () => {
   assert.deepEqual(unguarded, []);
 });
 
-test('the open paths are only health checks', () => {
-  assert.deepEqual(OPEN_PATHS, ['/health', '/ready']);
+test('the open paths are health checks and the caller\'s own /me', () => {
+  assert.deepEqual(OPEN_PATHS, ['/health', '/ready', '/me']);
 });
 
 test('the check notices a route without a guard', async () => {
