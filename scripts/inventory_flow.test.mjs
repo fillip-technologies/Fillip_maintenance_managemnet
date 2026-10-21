@@ -220,14 +220,24 @@ t('9. the outbox keeps notifications while Communication is down', async () => {
   const saved = kit.env.FBOS_COMMUNICATION_URL;
   kit.env.FBOS_COMMUNICATION_URL = 'http://127.0.0.1:9';
   try {
-    const before = await kit.prisma.outbox.count({ where: { status: 'pending' } });
-    assert.ok(before > 0);
-    const round = await deliverPending({ limit: 5 });
-    assert.ok(round.failed > 0);
-    assert.equal(await kit.prisma.outbox.count({ where: { status: 'delivered' } }), await kit.prisma.outbox.count({ where: { status: 'delivered' } }));
-    const row = await kit.prisma.outbox.findFirst({ where: { status: 'pending', attempts: { gt: 0 } } });
-    assert.ok(row.nextAttemptAt > new Date(), 'retried later with backoff');
+    // Make this run's notifications due now, then try exactly those.
+    const ours = await kit.prisma.outbox.findMany({ where: { aggregateId: { in: s.deviceIds.concat(await transferIds()) } }, select: { id: true } });
+    assert.ok(ours.length > 0);
+    await kit.prisma.outbox.updateMany({ where: { id: { in: ours.map((r) => r.id) } }, data: { status: 'pending', nextAttemptAt: new Date(0) } });
+    const round = await deliverPending({ limit: 1000 });
+    assert.ok(round.failed >= ours.length);
+    const after = await kit.prisma.outbox.findMany({ where: { id: { in: ours.map((r) => r.id) } } });
+    for (const row of after) {
+      assert.equal(row.status, 'pending', 'kept, not dropped');
+      assert.ok(row.nextAttemptAt > new Date(), 'retried later with backoff');
+      assert.match(row.lastError, /fetch failed|ECONNREFUSED|Communication/);
+    }
   } finally {
     kit.env.FBOS_COMMUNICATION_URL = saved;
   }
 });
+
+async function transferIds() {
+  const rows = await kit.prisma.stockTransferItem.findMany({ where: { deviceId: { in: s.deviceIds } }, select: { stockTransferId: true } });
+  return [...new Set(rows.map((r) => r.stockTransferId))];
+}
