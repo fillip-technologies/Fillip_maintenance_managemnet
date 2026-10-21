@@ -240,6 +240,7 @@ export async function receiveGoods(actor, body) {
               unitPrice: line.unitPrice,
               purchaseDate: po.orderDate,
               receivedAt,
+              status: 'provisioned',
               lifecycleState: state,
               currentLocationId: location.id,
               companyId: location.companyId,
