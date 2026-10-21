@@ -1,3 +1,4 @@
+import { withTx } from '../inventory/db.js';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
@@ -188,7 +189,7 @@ export const deviceImportService = {
     }
 
     let created = 0;
-    await prisma.$transaction(async (tx) => {
+    await withTx(async (tx) => {
       for (const [categoryId, rowsForCat] of byCategory) {
         const count = rowsForCat.reduce((n, v) => n + v.data.quantity, 0);
         const { codes } = await reserveCodes(tx, categoryId, count);

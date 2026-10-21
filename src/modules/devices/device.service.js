@@ -1,3 +1,4 @@
+import { withTx } from '../inventory/db.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
@@ -123,7 +124,7 @@ export const deviceService = {
         'ZONE_HAS_CHILDREN',
       );
     }
-    return prisma.$transaction(async (tx) => {
+    return withTx(async (tx) => {
       const device = await tx.device.create({ data: { ...data, addedById: creatorId } });
       await syncFromLegacy(tx, device.id, { legacyUserId: creatorId, eventType: 'registered' });
       return tx.device.findUnique({ where: { id: device.id }, include: withZone });
@@ -172,7 +173,7 @@ export const deviceService = {
 
     const resolvedCompanyId = await resolveUnitCompany(user, { companyId, zoneClientCompanyId });
 
-    return prisma.$transaction(async (tx) => {
+    return withTx(async (tx) => {
       const { codes } = await reserveCodes(tx, categoryId, 1);
       const device = await tx.device.create({
         data: {
@@ -213,7 +214,7 @@ export const deviceService = {
       throw ApiError.badRequest('Zone belongs to a different organization than the unit');
     }
     const status = device.status === 'provisioned' ? 'active' : device.status;
-    return prisma.$transaction(async (tx) => {
+    return withTx(async (tx) => {
       await tx.device.update({ where: { id }, data: { zoneId } });
       await syncFromLegacy(tx, id, { status, legacyUserId: user?.id, eventType: device.zoneId ? 'relocated' : 'installed' });
       return tx.device.findUnique({ where: { id }, include: withZone });
@@ -245,7 +246,7 @@ export const deviceService = {
     if (!allowed.includes(toStatus)) {
       throw ApiError.badRequest(`Illegal device transition: ${device.status} → ${toStatus}`);
     }
-    return prisma.$transaction(async (tx) => {
+    return withTx(async (tx) => {
       await syncFromLegacy(tx, id, {
         status: toStatus,
         legacyUserId: user?.id,
