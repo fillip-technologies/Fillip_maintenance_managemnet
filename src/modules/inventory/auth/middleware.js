@@ -1,6 +1,8 @@
 import { env } from '../../../config/env.js';
 import { InventoryError } from '../http/errors.js';
 import { resolveActor } from './identityClient.js';
+import { fixlyActorFromToken } from './fixlyActor.js';
+import { actorContext } from './context.js';
 
 /** Every /api/inventory/v1 request: who is calling, in the operator's organization. */
 export async function authenticateActor(req, _res, next) {
@@ -8,6 +10,12 @@ export async function authenticateActor(req, _res, next) {
     const authorization = req.get('authorization');
     if (!authorization?.toLowerCase().startsWith('bearer ')) {
       throw new InventoryError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+    // A Fixly token (Fixly web / mobile) is checked here; anything else goes to FBOS Identity.
+    const fixly = await fixlyActorFromToken(authorization.slice(7).trim());
+    if (fixly) {
+      req.actor = fixly;
+      return actorContext.run({ legacyUserId: fixly.legacyUserId }, next);
     }
     const actor = await resolveActor(authorization, req.get('x-organization-id'));
     // This service only holds the operator organization's inventory. Another

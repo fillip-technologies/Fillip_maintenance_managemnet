@@ -1,3 +1,4 @@
+import { currentLegacyUserId } from '../auth/context.js';
 import { withTx } from '../db.js';
 import { prisma } from '../../../lib/prisma.js';
 import { env } from '../../../config/env.js';
@@ -108,7 +109,7 @@ export async function dispatchRepair(actor, id, version, body = {}) {
     }, { tx });
     const approved = await tx.stockTransfer.update({ where: { id: t.id }, data: { status: 'approved', approvedByUserId: actor.userId, approvedAt: new Date(), version: { increment: 1 } } });
     await dispatchTransfer(OPERATOR, actor, t.id, approved.version, body, { tx });
-    await tx.deviceLifecycleEvent.create({ data: { organizationId: org(), deviceId: ro.deviceId, eventType: ro.isWarrantyClaim ? 'warranty_claimed' : 'repair_sent', toState: 'in_transit', referenceType: 'repair_order', referenceId: ro.id, actorUserId: actor.userId, notes: `${ro.repairNumber} to ${destination.name}` } });
+    await tx.deviceLifecycleEvent.create({ data: { organizationId: org(), legacyUserId: currentLegacyUserId(), deviceId: ro.deviceId, eventType: ro.isWarrantyClaim ? 'warranty_claimed' : 'repair_sent', toState: 'in_transit', referenceType: 'repair_order', referenceId: ro.id, actorUserId: actor.userId, notes: `${ro.repairNumber} to ${destination.name}` } });
     return tx.repairOrder.update({ where: { id }, data: { status: 'sent', sentAt: new Date(), outboundTransferId: t.id, version: { increment: 1 } }, include: repairInclude });
   }, TX);
 }
@@ -157,7 +158,7 @@ export async function closeRepair(actor, id, version, body) {
       const dispatched = await dispatchTransfer(OPERATOR, actor, t.id, approved.version, {}, { tx });
       await receiveTransfer(OPERATOR, actor, t.id, dispatched.version, { items: [{ device_id: device.id, status: 'received', condition_in: 'refurbished' }] }, { tx });
       await tx.device.update({ where: { id: device.id }, data: { repairCount: { increment: 1 } } });
-      await tx.deviceLifecycleEvent.create({ data: { organizationId: org(), deviceId: device.id, eventType: 'repair_returned', referenceType: 'repair_order', referenceId: id, actorUserId: actor.userId, notes: `${ro.repairNumber}: ${body.outcome.replace(/_/g, ' ')} → ${back.name}` } });
+      await tx.deviceLifecycleEvent.create({ data: { organizationId: org(), legacyUserId: currentLegacyUserId(), deviceId: device.id, eventType: 'repair_returned', referenceType: 'repair_order', referenceId: id, actorUserId: actor.userId, notes: `${ro.repairNumber}: ${body.outcome.replace(/_/g, ' ')} → ${back.name}` } });
       returnTransferId = t.id;
     }
     if (body.parts?.length) {

@@ -1,4 +1,5 @@
 import { env } from '../../../config/env.js';
+import { currentLegacyUserId } from '../auth/context.js';
 import { ApiError } from '../../../utils/ApiError.js';
 import {
   ZONE_STATES,
@@ -38,7 +39,7 @@ const DEVICE_PLACE = {
 /** Append one row to the device's history. Never updated or deleted afterwards. */
 export function recordLifecycleEvent(tx, event) {
   return tx.deviceLifecycleEvent.create({
-    data: { organizationId: env.FBOS_ORGANIZATION_ID ?? null, ...event },
+    data: { organizationId: env.FBOS_ORGANIZATION_ID ?? null, legacyUserId: currentLegacyUserId(), ...event },
   });
 }
 

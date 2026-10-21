@@ -19,17 +19,30 @@ import { logger } from '../../../config/logger.js';
  * Records outside the scope are answered as 404 by the routes.
  */
 export class Access {
-  constructor({ all = false, siteIds = [], companyIds = [], technicianId = null, ownOnly = false, userId = null }) {
+  /**
+   * `zoneIds`: zones (with their sub-zones) the caller covers, for Fixly zone officers.
+   * `zoneSiteIds`: the sites those zones are in, only for naming sites and zones.
+   * `companyStockOnly`: the company grant covers its unallocated stock only, not
+   * devices at its other sites (a Fixly client_admin, like the legacy scope).
+   */
+  constructor({ all = false, siteIds = [], companyIds = [], zoneIds = [], zoneSiteIds = [], companyStockOnly = false, technicianId = null, ownOnly = false, userId = null }) {
     this.all = all;
     this.siteIds = siteIds;
     this.companyIds = companyIds;
+    this.zoneIds = zoneIds;
+    this.zoneSiteIds = zoneSiteIds;
+    this.companyStockOnly = companyStockOnly;
     this.technicianId = technicianId;
     this.ownOnly = ownOnly;
     this.userId = userId;
   }
 
   get none() {
-    return !this.all && this.siteIds.length === 0 && this.companyIds.length === 0;
+    return !this.all && this.siteIds.length === 0 && this.companyIds.length === 0 && this.zoneIds.length === 0;
+  }
+
+  companyFilter(field) {
+    return this.companyStockOnly ? { [field]: { in: this.companyIds }, currentClientId: null, zoneId: null } : { [field]: { in: this.companyIds } };
   }
 
   /** Prisma `where` for devices the caller may see. */
@@ -41,8 +54,9 @@ export class Access {
       OR: [
         { currentClientId: { in: this.siteIds } },
         { zone: { clientId: { in: this.siteIds } } },
-        { companyId: { in: this.companyIds } },
-        { ownerCompanyId: { in: this.companyIds } },
+        { zoneId: { in: this.zoneIds } },
+        this.companyFilter('companyId'),
+        this.companyFilter('ownerCompanyId'),
       ],
     };
   }
@@ -50,28 +64,32 @@ export class Access {
   /** Prisma `where` for sites (clients). */
   siteWhere() {
     if (this.all) return orgFilter();
-    return { ...orgFilter(), OR: [{ id: { in: this.siteIds } }, { companyId: { in: this.companyIds } }] };
+    const OR = [{ id: { in: [...this.siteIds, ...this.zoneSiteIds] } }];
+    if (!this.companyStockOnly) OR.push({ companyId: { in: this.companyIds } });
+    return { ...orgFilter(), OR };
   }
 
   /** Prisma `where` for customers (companies). */
   customerWhere() {
     if (this.all) return orgFilter();
-    return { ...orgFilter(), OR: [{ id: { in: this.companyIds } }, { clients: { some: { id: { in: this.siteIds } } } }] };
+    return { ...orgFilter(), OR: [{ id: { in: this.companyIds } }, { clients: { some: { id: { in: [...this.siteIds, ...this.zoneSiteIds] } } } }] };
   }
 
   /** Prisma `where` for stock locations: their own stores; operator places only for `all`. */
   locationWhere() {
     if (this.all) return orgFilter();
-    return {
-      ...orgFilter(),
-      OR: [{ clientId: { in: this.siteIds } }, { companyId: { in: this.companyIds } }, { client: { companyId: { in: this.companyIds } } }],
-    };
+    const OR = [{ clientId: { in: this.siteIds } }];
+    if (this.companyStockOnly) OR.push({ companyId: { in: this.companyIds }, clientId: null });
+    else OR.push({ companyId: { in: this.companyIds } }, { client: { companyId: { in: this.companyIds } } });
+    return { ...orgFilter(), OR };
   }
 
   /** Can the caller see records held by this customer / site? */
   coversHolder({ companyId, clientId }) {
     if (this.all) return true;
-    return (clientId && this.siteIds.includes(clientId)) || (companyId && this.companyIds.includes(companyId));
+    if (clientId && this.siteIds.includes(clientId)) return true;
+    if (!companyId || !this.companyIds.includes(companyId)) return false;
+    return !this.companyStockOnly || !clientId;
   }
 }
 
@@ -102,6 +120,7 @@ async function coverage(technicianId) {
  */
 export async function accessFor(actor, code) {
   if (!actor.has(code)) return new Access({});
+  if (actor.platform === 'fixly') return accessFromFixlyScope(actor, code);
   if (actor.isSuperuser) return new Access({ all: true, userId: actor.userId });
 
   const ownOnly = actor.onlyOwn(code);
@@ -143,3 +162,22 @@ export const withAccess = (code) => async (req, _res, next) => {
     return next(err);
   }
 };
+
+/** A Fixly user's zone-path scope (authz/scope.js) as an inventory Access. */
+async function accessFromFixlyScope(actor, code) {
+  const scope = actor.scope;
+  if (scope.platform) return new Access({ all: true, userId: actor.userId, technicianId: actor.technicianId });
+  const zoneSiteIds = scope.zoneIds.length
+    ? [...new Set((await prisma.zone.findMany({ where: { id: { in: scope.zoneIds } }, select: { clientId: true } })).map((z) => z.clientId))]
+    : [];
+  return new Access({
+    siteIds: scope.clientIds,
+    companyIds: scope.companyIds ?? [],
+    companyStockOnly: true,
+    zoneIds: scope.zoneIds,
+    zoneSiteIds,
+    technicianId: actor.technicianId,
+    ownOnly: actor.onlyOwn(code),
+    userId: actor.userId,
+  });
+}

@@ -189,7 +189,7 @@ serviceRouter.get(
         q.priority ? { priority: q.priority } : {},
         q.device_id ? { deviceId: q.device_id } : {},
         q.site_id ? { clientId: q.site_id } : {},
-        q.mine ? { OR: [{ assignedTechnicianId: req.access.technicianId ?? '-' }, { raisedByFbosUserId: req.actor.userId }] } : {},
+        q.mine ? { OR: [{ assignedTechnicianId: req.access.technicianId ?? '-' }, { raisedByFbosUserId: req.actor.userId ?? '-' }, { raisedByUserId: req.actor.legacyUserId ?? '-' }] } : {},
         q.overdue ? { slaDueAt: { lt: new Date() }, status: { notIn: ['resolved', 'closed'] } } : {},
         q.q ? { OR: [{ issueNumber: { contains: q.q } }, { description: { contains: q.q } }, { device: { code: { contains: q.q } } }] } : {},
       ],
@@ -510,16 +510,17 @@ serviceRouter.post(
 
 // ---- daily status logs ----------------------------------------------------------
 
+// Reporting how a device is doing is part of following issues (zone staff do it daily).
 serviceRouter.post(
   '/daily-status-logs',
-  requirePermission(P.DEVICE_WRITE),
+  requirePermission(P.ISSUE_WRITE),
   validate(z.object({ body: z.object({ device_id: z.string().uuid(), status: z.enum(['working', 'not_working', 'needs_attention']), notes: z.string().max(2000).optional(), log_date: z.string().date().optional() }) })),
-  withAccess(P.DEVICE_WRITE),
+  withAccess(P.DEVICE_READ),
   handle(async (req, res) => {
     const b = req.input.body;
     const device = await deviceInScope(req.access, b.device_id, {});
     const logDate = new Date(b.log_date ?? new Date().toISOString().slice(0, 10));
-    const loggedBy = await legacyUserFor(req.actor.userId);
+    const loggedBy = await legacyUserFor(req.actor);
     const log = await withTx(async (tx) => {
       const row = await tx.dailyStatusLog.upsert({
         where: { deviceId_logDate: { deviceId: device.id, logDate } },

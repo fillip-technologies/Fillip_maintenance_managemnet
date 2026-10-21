@@ -26,7 +26,7 @@ export async function installDevice(access, actor, body, version) {
   if (device.currentClientId !== zone.clientId) {
     throw unprocessable('ZONE_OF_ANOTHER_SITE', 'The zone is at another site than the store the device is in');
   }
-  const technicianId = body.installed_by_technician_id ?? (await technicianFor(actor.userId));
+  const technicianId = body.installed_by_technician_id ?? access.technicianId ?? (await technicianFor(actor.userId));
   return withTx(async (tx) => {
     const { installation } = await changeDeviceState(tx, device.id, {
       toState: 'installed',

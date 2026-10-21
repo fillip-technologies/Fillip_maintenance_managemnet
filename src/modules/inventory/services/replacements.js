@@ -47,7 +47,7 @@ export async function requestReplacement(access, actor, body) {
     if (open) throw conflict('REPLACEMENT_ALREADY_REQUESTED', 'A replacement is already under way for this issue', { replacement_id: open.id });
     const device = await tx.device.findUnique({ where: { id: issue.deviceId } });
     if (!device.zoneId) throw conflict('DEVICE_NOT_INSTALLED', 'Only an installed device is replaced; this one is not in a zone');
-    const requester = await legacyUserFor(actor.userId);
+    const requester = await legacyUserFor(actor);
     const r = await tx.replacementRequest.create({
       data: {
         organizationId: org(),
@@ -122,7 +122,7 @@ export async function approveReplacement(access, actor, id, body) {
       // The replacement approval is the transfer's approval.
       transfer = await tx.stockTransfer.update({ where: { id: transfer.id }, data: { status: 'approved', approvedByUserId: actor.userId, approvedAt: new Date(), version: { increment: 1 } } });
     }
-    const reviewer = await legacyUserFor(actor.userId);
+    const reviewer = await legacyUserFor(actor);
     await tx.replacementRequest.update({
       where: { id },
       data: {
@@ -150,7 +150,7 @@ export async function rejectReplacement(access, actor, id, note) {
   return withTx(async (tx) => {
     const r = await replacementInScope(tx, access, id);
     if (r.status !== 'pending') throw conflict('INVALID_REPLACEMENT_STATUS', `A ${r.status} replacement cannot be rejected`);
-    const reviewer = await legacyUserFor(actor.userId);
+    const reviewer = await legacyUserFor(actor);
     await tx.replacementRequest.update({ where: { id }, data: { status: 'rejected', reviewedAt: new Date(), reviewedByUserId: reviewer, reviewedByFbosUserId: actor.userId, reviewNote: note ?? null } });
     if (r.faultyDevice.lifecycleState === 'pending_replacement') {
       await changeDeviceState(tx, r.faultyDevice.id, { toState: 'faulty', eventType: 'status_changed', referenceType: 'replacement_request', referenceId: id, actorUserId: actor.userId, notes: `Replacement rejected${note ? `: ${note}` : ''}` });

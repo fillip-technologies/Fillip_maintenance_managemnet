@@ -1,3 +1,4 @@
+import { currentLegacyUserId } from '../auth/context.js';
 import { withTx } from '../db.js';
 import { prisma } from '../../../lib/prisma.js';
 import { env } from '../../../config/env.js';
@@ -36,12 +37,19 @@ export function issueWhere(access) {
       ...base,
       OR: [
         ...(access.technicianId ? [{ assignedTechnicianId: access.technicianId }] : []),
-        { assignedTechnicianId: null, clientId: { in: access.siteIds } },
-        { raisedByFbosUserId: access.userId },
+        { assignedTechnicianId: null, OR: [{ clientId: { in: access.siteIds } }, { zoneId: { in: access.zoneIds } }] },
+        ...(access.userId ? [{ raisedByFbosUserId: access.userId }] : []),
       ],
     };
   }
-  return { ...base, OR: [{ clientId: { in: access.siteIds } }, { companyId: { in: access.companyIds } }] };
+  return {
+    ...base,
+    OR: [
+      { clientId: { in: access.siteIds } },
+      { zoneId: { in: access.zoneIds } },
+      access.companyStockOnly ? { companyId: { in: access.companyIds }, clientId: null } : { companyId: { in: access.companyIds } },
+    ],
+  };
 }
 
 export async function issueInScope(tx, access, id, include = issueInclude) {
@@ -50,9 +58,11 @@ export async function issueInScope(tx, access, id, include = issueInclude) {
   return issue;
 }
 
-/** The Fixly user linked to an FBOS user, for the legacy FK columns (null when not linked). */
-export async function legacyUserFor(fbosUserId) {
-  const user = await prisma.user.findUnique({ where: { fbosUserId }, select: { id: true } });
+/** The Fixly user acting (a Fixly token), or linked to the FBOS user, for the legacy FK columns. */
+export async function legacyUserFor(actor) {
+  if (actor.legacyUserId) return actor.legacyUserId;
+  if (!actor.userId) return null;
+  const user = await prisma.user.findUnique({ where: { fbosUserId: actor.userId }, select: { id: true } });
   return user?.id ?? null;
 }
 
@@ -74,7 +84,7 @@ export async function raiseIssue(access, actor, body) {
   if (!category || (category.categoryId && category.categoryId !== device.categoryId)) {
     throw unprocessable('ISSUE_CATEGORY_NOT_APPLICABLE', 'That kind of problem does not apply to this device');
   }
-  const raisedBy = await legacyUserFor(actor.userId);
+  const raisedBy = await legacyUserFor(actor);
   const issue = await withTx(async (tx) => {
     const created = await tx.issue.create({
       data: {
@@ -94,7 +104,7 @@ export async function raiseIssue(access, actor, body) {
     await reconcileDeviceStatus(tx, device.id);
     await tx.deviceLifecycleEvent.create({
       data: {
-        organizationId: org(), deviceId: device.id, eventType: 'issue_raised', toState: device.lifecycleState,
+        organizationId: org(), legacyUserId: currentLegacyUserId(), deviceId: device.id, eventType: 'issue_raised', toState: device.lifecycleState,
         referenceType: 'issue', referenceId: created.id, actorUserId: actor.userId, notes: `${enriched.issueNumber}: ${category.name}`,
       },
     });
@@ -126,7 +136,7 @@ export async function assignIssue(access, actor, id, version, technicianId) {
     const issue = await issueInScope(tx, access, id);
     assertVersion(issue, version);
     if (['resolved', 'closed'].includes(issue.status)) throw conflict('ISSUE_FINISHED', 'A resolved or closed issue is not assigned');
-    const changer = await legacyUserFor(actor.userId);
+    const changer = await legacyUserFor(actor);
     const next = await tx.issue.update({
       where: { id },
       data: { assignedTechnicianId: technician.id, status: issue.status === 'open' || issue.status === 'reopened' ? 'assigned' : issue.status, version: { increment: 1 } },
@@ -164,7 +174,7 @@ export async function moveIssue(access, actor, id, version, { to_status: toStatu
     }
     // A technician limited to their own issues may only work ones assigned to them (or pick up an open one).
     if (access.ownOnly && issue.assignedTechnicianId && issue.assignedTechnicianId !== access.technicianId) throw notFound('issue');
-    const changer = await legacyUserFor(actor.userId);
+    const changer = await legacyUserFor(actor);
     const data = {
       status: toStatus,
       version: { increment: 1 },
