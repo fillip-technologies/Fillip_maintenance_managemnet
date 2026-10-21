@@ -51,6 +51,16 @@ catalogRouter.get(
   }),
 );
 
+// The legacy product categories: a model needs one, because device codes come from its series.
+catalogRouter.get(
+  '/device-categories',
+  requirePermission(P.CATALOG_READ),
+  handle(async (_req, res) => {
+    const rows = await prisma.productCategory.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } });
+    res.json({ data: rows });
+  }),
+);
+
 catalogRouter.get(
   '/vendors',
   requirePermission(P.CATALOG_READ),
