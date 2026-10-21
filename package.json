@@ -20,7 +20,9 @@
     "test:unit": "node --test scripts/*.test.mjs",
     "v2:reset-local-db": "sh scripts/v2/reset_local_db.sh",
     "v2:backfill": "node scripts/v2/backfill.mjs",
-    "v2:smoke": "node scripts/v2/legacy_smoke.mjs"
+    "v2:smoke": "node scripts/v2/legacy_smoke.mjs",
+    "v2:local-passwords": "node scripts/v2/set_local_passwords.mjs",
+    "v2:fbos-bootstrap": "node scripts/v2/fbos_dev_bootstrap.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
