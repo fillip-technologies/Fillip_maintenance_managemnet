@@ -10,6 +10,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { apiRouter } from './routes/index.js';
 import { healthRouter } from './routes/health.js';
+import { inventoryRouter } from './modules/inventory/router.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -66,6 +67,12 @@ export function createApp() {
   );
 
   app.use('/api/v1', apiRouter);
+
+  // Fixly v2: the FBOS-conformant inventory service. Its own auth (FBOS Identity),
+  // errors and pages; it never shares middleware with the legacy /api/v1.
+  if (env.INVENTORY_API_ENABLED) {
+    app.use('/api/inventory/v1', inventoryRouter());
+  }
 
   // 404 + centralized error handling (must be last).
   app.use(notFound);
