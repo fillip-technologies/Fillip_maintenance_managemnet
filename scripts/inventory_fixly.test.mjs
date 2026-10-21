@@ -11,7 +11,7 @@ process.env.INVENTORY_API_ENABLED = 'true';
 const url = process.env.DATABASE_URL ?? '';
 const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url) && /\/test_/.test(url);
 const t = local ? test : test.skip;
-const PASSWORD = 'FixlyRole@123';
+const PASSWORD = 'Fixly@12345'; // same as npm run v2:local-passwords, so testing never locks you out
 let prisma;
 let server;
 let root;

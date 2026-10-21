@@ -15,7 +15,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const BASE = process.env.LEGACY_BASE ?? 'http://localhost:3000/api/v1';
-const PASSWORD = 'LegacySmoke@123';
+const PASSWORD = 'Fixly@12345'; // same as npm run v2:local-passwords
 const url = process.env.DATABASE_URL ?? '';
 if (!/@(localhost|127\.0\.0\.1)[:/]/.test(url) || !/\/test_[^/?]*/.test(url)) {
   console.error('Only runs against a local test_* database.');
