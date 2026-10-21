@@ -214,8 +214,8 @@ export const deviceService = {
     }
     const status = device.status === 'provisioned' ? 'active' : device.status;
     return prisma.$transaction(async (tx) => {
-      await tx.device.update({ where: { id }, data: { zoneId, status } });
-      await syncFromLegacy(tx, id, { legacyUserId: user?.id, eventType: device.zoneId ? 'relocated' : 'installed' });
+      await tx.device.update({ where: { id }, data: { zoneId } });
+      await syncFromLegacy(tx, id, { status, legacyUserId: user?.id, eventType: device.zoneId ? 'relocated' : 'installed' });
       return tx.device.findUnique({ where: { id }, include: withZone });
     });
   },
@@ -246,8 +246,8 @@ export const deviceService = {
       throw ApiError.badRequest(`Illegal device transition: ${device.status} → ${toStatus}`);
     }
     return prisma.$transaction(async (tx) => {
-      await tx.device.update({ where: { id }, data: { status: toStatus } });
       await syncFromLegacy(tx, id, {
+        status: toStatus,
         legacyUserId: user?.id,
         eventType: toStatus === 'retired' ? 'retired' : 'status_changed',
       });
@@ -317,8 +317,8 @@ export async function reconcileDeviceStatus(tx, deviceId) {
       : 'active';
 
   if (target !== device.status) {
-    await tx.device.update({ where: { id: deviceId }, data: { status: target } });
-    await syncFromLegacy(tx, deviceId, { eventType: 'status_changed', notes: `Derived from issues and daily logs: ${target}` });
+    // `status` is derived from lifecycle_state by the database; set the state it stands for.
+    await syncFromLegacy(tx, deviceId, { status: target, eventType: 'status_changed', notes: `Derived from issues and daily logs: ${target}` });
   }
   return target;
 }

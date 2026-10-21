@@ -458,25 +458,26 @@ model HardwareType {
 // (zone, status, daily logs, issues). A unit with `zoneId = null` is IN STOCK
 // (owned by a company, not yet deployed to a zone); deploying assigns a zone.
 model Device {
-  id             String       @id @default(uuid()) @db.Char(36)
-  companyId      String?      @map("company_id") @db.Char(36) // owning organization (set even in stock)
-  zoneId         String?      @map("zone_id") @db.Char(36) // null = in stock (not deployed)
-  categoryId     String?      @map("category_id") @db.Char(36)
-  productTypeId  String?      @map("product_type_id") @db.Char(36)
-  hardwareTypeId String?      @map("hardware_type_id") @db.Char(36)
-  code           String?      @unique @db.VarChar(40) // system-generated unique id, e.g. CAM-000123
-  name           String       @db.VarChar(120)
-  location       String?      @db.VarChar(200)
-  unitPrice      Decimal?     @map("unit_price") @db.Decimal(12, 2)
-  purchaseDate   DateTime?    @map("purchase_date") @db.Date
-  installDate    DateTime?    @map("install_date") @db.Date
-  imageUrl       String?      @map("image_url") @db.Text
-  status         DeviceStatus @default(provisioned)
-  isManualEntry  Boolean      @default(false) @map("is_manual_entry")
-  customSpec     Json?        @map("custom_spec")
-  addedById      String?      @map("added_by") @db.Char(36)
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  id             String        @id @default(uuid()) @db.Char(36)
+  companyId      String?       @map("company_id") @db.Char(36) // owning organization (set even in stock)
+  zoneId         String?       @map("zone_id") @db.Char(36) // null = in stock (not deployed)
+  categoryId     String?       @map("category_id") @db.Char(36)
+  productTypeId  String?       @map("product_type_id") @db.Char(36)
+  hardwareTypeId String?       @map("hardware_type_id") @db.Char(36)
+  code           String?       @unique @db.VarChar(40) // system-generated unique id, e.g. CAM-000123
+  name           String        @db.VarChar(120)
+  location       String?       @db.VarChar(200)
+  unitPrice      Decimal?      @map("unit_price") @db.Decimal(12, 2)
+  purchaseDate   DateTime?     @map("purchase_date") @db.Date
+  installDate    DateTime?     @map("install_date") @db.Date
+  imageUrl       String?       @map("image_url") @db.Text
+  /// Phase 6: generated from lifecycle_state by the database (legacy apps read it); never written.
+  status         DeviceStatus?
+  isManualEntry  Boolean       @default(false) @map("is_manual_entry")
+  customSpec     Json?         @map("custom_spec")
+  addedById      String?       @map("added_by") @db.Char(36)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   // --- v2 (design doc §7.2). Until Phase 6 `companyId` is the current custody
   // company, `zoneId` the current zone and `installDate` the first install date;

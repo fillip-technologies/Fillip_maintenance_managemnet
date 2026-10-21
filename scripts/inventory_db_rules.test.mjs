@@ -100,8 +100,7 @@ t('a legacy zone move closes the old installation, opens a new one and logs it',
 t('a legacy status change to retired moves the device out of its zone in v2 terms', async () => {
   await inRollback(async (tx) => {
     const d = await installedDevice(tx);
-    await tx.device.update({ where: { id: d.id }, data: { status: 'retired' } });
-    await syncFromLegacy(tx, d.id, { eventType: 'retired' });
+    await syncFromLegacy(tx, d.id, { status: 'retired', eventType: 'retired' });
     const after = await tx.device.findUnique({ where: { id: d.id } });
     assert.equal(after.lifecycleState, 'retired');
     assert.equal(await tx.deviceInstallation.count({ where: { deviceId: d.id, status: 'active' } }), 0);

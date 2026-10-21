@@ -8,7 +8,6 @@ import {
   canTransition,
   placementError,
   lifecycleFromLegacy,
-  legacyStatusFor,
 } from './lifecycle.js';
 
 /**
@@ -95,7 +94,9 @@ async function moveInstallation(tx, device, { zoneId, clientId, userId, legacyUs
 /**
  * Called after a legacy (v1 API) write to a device: derive the v2 columns from
  * `status` / `zoneId`, keep installations in step and log what changed.
- * `context`: { legacyUserId, eventType, referenceType, referenceId, notes }.
+ * `devices.status` is generated from lifecycle_state, so a legacy write that
+ * means a new status passes it as `context.status` instead of writing it.
+ * `context`: { status?, legacyUserId, eventType, referenceType, referenceId, notes }.
  */
 export async function syncFromLegacy(tx, deviceId, context = {}) {
   const device = await tx.device.findUnique({ where: { id: deviceId }, select: DEVICE_PLACE });
@@ -103,7 +104,7 @@ export async function syncFromLegacy(tx, deviceId, context = {}) {
 
   const clientId = device.zoneId ? device.zone?.clientId ?? null : device.currentClientId;
   const state = lifecycleFromLegacy({
-    status: device.status,
+    status: context.status ?? device.status,
     zoneId: device.zoneId,
     current: device.lifecycleState,
     hasClient: Boolean(clientId),
@@ -230,7 +231,6 @@ export async function changeDeviceState(tx, deviceId, change) {
     where: { id: deviceId },
     data: {
       lifecycleState: to,
-      status: legacyStatusFor(to),
       zoneId,
       currentLocationId: locationId,
       companyId,
