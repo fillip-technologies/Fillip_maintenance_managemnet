@@ -1,0 +1,70 @@
+title Fixly v2 - Device Journey from Order to Installation
+
+Procurement [color: yellow, icon: file-text] {
+  Need Identified [shape: oval]
+  Create Purchase Order
+  Approve PO
+  Vendor Ships Devices
+  Goods Receipt GRN
+  QC Check [shape: diamond]
+  Return to Vendor
+  Register Devices with Serial and Warranty
+}
+
+Platform Inventory [color: purple, icon: archive] {
+  Platform Stock
+  Allocate to Company
+  Dispatch to Company
+}
+
+Company Inventory [color: blue, icon: building] {
+  Company Receives
+  Company Stock
+  Allocate to Client
+  Dispatch to Client
+}
+
+Client Inventory [color: green, icon: map-pin] {
+  Client Receives
+  Client Stock
+  Assign to Zone and Technician
+}
+
+Field Installation [color: red, icon: camera] {
+  Technician Installs in Zone
+  Commission and Test
+  Installed and Active [shape: oval]
+}
+
+Operations [color: orange, icon: activity] {
+  Daily Status Log
+  Device Healthy [shape: diamond]
+  Issue Raised
+  Fault Handling Flow [shape: oval]
+}
+
+Need Identified > Create Purchase Order
+Create Purchase Order > Approve PO
+Approve PO > Vendor Ships Devices
+Vendor Ships Devices > Goods Receipt GRN
+Goods Receipt GRN > QC Check
+QC Check > Register Devices with Serial and Warranty: Accepted
+QC Check > Return to Vendor: Rejected
+Register Devices with Serial and Warranty > Platform Stock
+Platform Stock > Allocate to Company
+Allocate to Company > Dispatch to Company
+Dispatch to Company > Company Receives: In Transit
+Company Receives > Company Stock
+Company Stock > Allocate to Client
+Allocate to Client > Dispatch to Client
+Dispatch to Client > Client Receives: In Transit
+Client Receives > Client Stock
+Client Stock > Assign to Zone and Technician
+Assign to Zone and Technician > Technician Installs in Zone
+Technician Installs in Zone > Commission and Test
+Commission and Test > Installed and Active
+Installed and Active > Daily Status Log
+Daily Status Log > Device Healthy
+Device Healthy > Daily Status Log: Yes
+Device Healthy > Issue Raised: No
+Issue Raised > Fault Handling Flow

@@ -1,0 +1,157 @@
+// ===== FIXLY v2 - DOMAIN 4: DEVICE (PHYSICAL UNIT), PLACEMENT & LIFECYCLE LOG =====
+// devices = one row per physical unit (serial number).  Model/spec lives in device_models.
+
+devices [icon: camera, color: red] {
+  id string pk
+  code string                     // asset tag e.g. CAM-000136 (unique)
+  serial_number string            // NEW unique per model
+  mac_address string              // NEW
+  barcode string                  // NEW QR / barcode label
+  device_model_id string          // NEW
+  category_id string
+  product_type_id string
+  hardware_type_id string
+  name string
+  vendor_id string                // NEW
+  goods_receipt_id string         // NEW  how it entered the platform
+  purchase_order_item_id string   // NEW
+  ownership_type string           // NEW platform_owned | company_owned | client_owned | leased
+  owner_company_id string         // NEW who owns it
+  current_company_id string       // CHG was company_id - who holds it now
+  current_client_id string        // NEW
+  current_zone_id string          // CHG was zone_id - null unless installed
+  current_location_id string      // NEW stock location when NOT installed
+  lifecycle_status string         // CHG in_platform_stock | reserved | in_transit | in_company_stock | in_client_stock | installed | under_maintenance | faulty | pending_replacement | under_repair | at_vendor_rma | retired | disposed | lost
+  condition string                // NEW new | good | fair | poor | refurbished
+  health_status string            // NEW working | not_working | needs_attention (from daily log)
+  unit_price decimal
+  purchase_date date
+  received_at datetime            // NEW
+  first_install_date date         // CHG was install_date
+  warranty_end_date date          // NEW denormalised from warranties
+  repair_count int                // NEW
+  image_url text
+  is_manual_entry boolean
+  custom_spec json
+  added_by string
+  created_at datetime
+  updated_at datetime
+}
+
+device_installations [icon: map-pin, color: red] {
+  id string pk                    // NEW TABLE - placement history (where was it installed, when, by whom)
+  device_id string
+  client_id string
+  zone_id string
+  installation_type string        // new | replacement | relocation | reinstall_after_repair
+  position_label string           // e.g. Pole 14 North Gate
+  latitude decimal
+  longitude decimal
+  map_x double
+  map_y double
+  installed_by_technician_id string
+  installed_at datetime
+  commissioned_at datetime
+  replaces_installation_id string
+  removed_at datetime
+  removed_by_technician_id string
+  removal_reason string           // faulty | replaced | relocated | upgraded | retired
+  photo_urls json
+  notes text
+  status string                   // active | removed
+}
+
+device_lifecycle_events [icon: clock, color: red] {
+  id string pk                    // NEW TABLE - append-only audit trail, one row per change
+  device_id string
+  event_type string               // received | stocked | allocated | transferred | installed | relocated | status_changed | issue_raised | visit_done | warranty_claimed | repair_sent | repair_returned | replaced | retired | disposed
+  from_status string
+  to_status string
+  from_location_id string
+  to_location_id string
+  company_id string
+  client_id string
+  zone_id string
+  actor_user_id string
+  reference_type string           // purchase_order | transfer | installation | issue | repair_order | replacement_request | disposal
+  reference_id string
+  notes text
+  metadata json
+  latitude decimal
+  longitude decimal
+  occurred_at datetime
+}
+
+device_documents [icon: file-text, color: red] {
+  id string pk                    // NEW TABLE
+  device_id string
+  doc_type string                 // invoice | warranty_card | challan | install_photo | rma_form | certificate | other
+  file_url text
+  uploaded_by_user_id string
+  created_at datetime
+}
+
+daily_status_logs [icon: activity, color: red] {
+  id string pk                    // existing
+  device_id string
+  logged_by_user_id string
+  status string                   // working | not_working | needs_attention
+  log_date date
+  notes text
+  created_at datetime
+}
+
+device_disposals [icon: trash, color: gray] {
+  id string pk                    // NEW TABLE - end of life
+  device_id string
+  disposal_method string          // scrap | recycle | sold | returned_to_vendor | donated | lost | stolen
+  reason string
+  approved_by_user_id string
+  disposed_at datetime
+  data_wiped boolean
+  certificate_url text
+  recovered_value decimal
+  notes text
+}
+
+// ---- stubs ----
+device_models [icon: box, color: orange] {
+  id string pk
+}
+stock_locations [icon: archive, color: purple] {
+  id string pk
+}
+companies [icon: building, color: blue] {
+  id string pk
+}
+clients [icon: map-pin, color: blue] {
+  id string pk
+}
+zones [icon: grid, color: blue] {
+  id string pk
+}
+technicians [icon: tool, color: green] {
+  id string pk
+}
+users [icon: user, color: gray] {
+  id string pk
+}
+
+device_models.id < devices.device_model_id
+companies.id < devices.owner_company_id
+companies.id < devices.current_company_id
+clients.id < devices.current_client_id
+zones.id < devices.current_zone_id
+stock_locations.id < devices.current_location_id
+devices.id < device_installations.device_id
+clients.id < device_installations.client_id
+zones.id < device_installations.zone_id
+technicians.id < device_installations.installed_by_technician_id
+device_installations.id < device_installations.replaces_installation_id
+devices.id < device_lifecycle_events.device_id
+users.id < device_lifecycle_events.actor_user_id
+devices.id < device_documents.device_id
+devices.id < daily_status_logs.device_id
+users.id < daily_status_logs.logged_by_user_id
+devices.id < device_disposals.device_id
+users.id < device_disposals.approved_by_user_id

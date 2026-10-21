@@ -1,0 +1,112 @@
+// ===== FIXLY v2 - DOMAIN 3: INVENTORY (3 TIERS), TRANSFERS & ALLOCATION =====
+// Platform warehouse -> Company store -> Client store -> installed in a Zone
+// Every movement = one stock_transfers header + stock_transfer_items rows (full chain of custody)
+
+stock_locations [icon: archive, color: purple] {
+  id string pk                    // NEW TABLE - "where can a device physically sit"
+  name string
+  location_type string            // platform_warehouse | company_store | client_store | in_transit | vendor | service_center | disposal
+  company_id string               // set for company_store
+  client_id string                // set for client_store
+  vendor_id string                // set for vendor / service_center
+  address text
+  is_active boolean
+  created_by string
+  created_at datetime
+  updated_at datetime
+}
+
+stock_transfers [icon: truck, color: purple] {
+  id string pk                    // NEW TABLE - dispatch / receive document
+  transfer_number string
+  transfer_type string            // platform_to_company | company_to_client | client_to_client | return_to_company | return_to_platform | to_repair | from_repair | to_vendor_rma | from_vendor_rma | replacement_dispatch
+  from_location_id string
+  to_location_id string
+  from_company_id string
+  to_company_id string
+  from_client_id string
+  to_client_id string
+  status string                   // draft | pending_approval | approved | dispatched | in_transit | received | partially_received | rejected | cancelled
+  requested_by_user_id string
+  approved_by_user_id string
+  dispatched_by_user_id string
+  received_by_user_id string
+  challan_number string
+  carrier string
+  tracking_number string
+  requested_at datetime
+  approved_at datetime
+  dispatched_at datetime
+  received_at datetime
+  notes text
+}
+
+stock_transfer_items [icon: list, color: purple] {
+  id string pk                    // NEW TABLE - one row per physical device moved
+  transfer_id string
+  device_id string
+  condition_out string            // new | good | fair | poor | refurbished
+  condition_in string
+  item_status string              // pending | received | missing | damaged
+  notes text
+}
+
+device_allocations [icon: user-check, color: purple] {
+  id string pk                    // NEW TABLE - who the device is GIVEN to (history)
+  device_id string
+  company_id string
+  client_id string
+  allocation_type string          // ownership | custody | loan
+  transfer_id string
+  allocated_by_user_id string
+  allocated_at datetime
+  released_at datetime
+  release_reason string
+  status string                   // active | released
+}
+
+// ---- stubs ----
+devices [icon: camera, color: red] {
+  id string pk
+  code string
+  serial_number string
+  lifecycle_status string
+  current_location_id string
+  current_company_id string
+  current_client_id string
+}
+companies [icon: building, color: blue] {
+  id string pk
+}
+clients [icon: map-pin, color: blue] {
+  id string pk
+}
+vendors [icon: truck, color: yellow] {
+  id string pk
+}
+users [icon: user, color: gray] {
+  id string pk
+}
+
+companies.id < stock_locations.company_id
+clients.id < stock_locations.client_id
+vendors.id < stock_locations.vendor_id
+stock_locations.id < stock_transfers.from_location_id
+stock_locations.id < stock_transfers.to_location_id
+companies.id < stock_transfers.from_company_id
+companies.id < stock_transfers.to_company_id
+clients.id < stock_transfers.from_client_id
+clients.id < stock_transfers.to_client_id
+users.id < stock_transfers.requested_by_user_id
+users.id < stock_transfers.approved_by_user_id
+users.id < stock_transfers.received_by_user_id
+stock_transfers.id < stock_transfer_items.transfer_id
+devices.id < stock_transfer_items.device_id
+devices.id < device_allocations.device_id
+companies.id < device_allocations.company_id
+clients.id < device_allocations.client_id
+stock_transfers.id < device_allocations.transfer_id
+users.id < device_allocations.allocated_by_user_id
+stock_locations.id < devices.current_location_id
+companies.id < devices.current_company_id
+clients.id < devices.current_client_id

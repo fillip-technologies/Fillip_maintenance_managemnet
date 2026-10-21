@@ -1,0 +1,160 @@
+// ===== FIXLY v2 - DOMAIN 2: CATALOG, PROCUREMENT (ORDER) & WARRANTY =====
+// Platform orders devices from a vendor -> receives them (GRN) -> each physical unit becomes a devices row
+
+product_categories [icon: tag, color: orange] {
+  id string pk
+  name string
+  code string
+  last_seq int
+  image_url text
+  created_at datetime
+}
+
+product_types [icon: tag, color: orange] {
+  id string pk
+  category_id string
+  name string
+  image_url text
+  created_at datetime
+}
+
+hardware_types [icon: cpu, color: orange] {
+  id string pk
+  name string
+  spec_fields json
+  created_at datetime
+}
+
+device_models [icon: box, color: orange] {
+  id string pk                    // NEW TABLE - the catalog SKU (what you order)
+  category_id string
+  product_type_id string
+  hardware_type_id string
+  manufacturer string
+  model_number string
+  name string
+  default_warranty_months int
+  default_unit_price decimal
+  spec_json json
+  image_url text
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+vendors [icon: truck, color: yellow] {
+  id string pk                    // NEW TABLE
+  vendor_code string
+  name string
+  vendor_type string              // manufacturer | distributor | service_center
+  contact_name string
+  email string
+  phone string
+  address text
+  gst_number string
+  status string                   // active | inactive | blacklisted
+  created_at datetime
+  updated_at datetime
+}
+
+purchase_orders [icon: file-text, color: yellow] {
+  id string pk                    // NEW TABLE - platform orders from vendor
+  po_number string
+  vendor_id string
+  ordered_by_user_id string
+  approved_by_user_id string
+  status string                   // draft | submitted | approved | partially_received | received | cancelled
+  order_date date
+  expected_delivery_date date
+  currency string
+  subtotal decimal
+  tax_total decimal
+  total_amount decimal
+  notes text
+  created_at datetime
+  updated_at datetime
+}
+
+purchase_order_items [icon: list, color: yellow] {
+  id string pk                    // NEW TABLE
+  purchase_order_id string
+  device_model_id string
+  quantity_ordered int
+  quantity_received int
+  unit_price decimal
+  tax_percent decimal
+}
+
+goods_receipts [icon: package, color: yellow] {
+  id string pk                    // NEW TABLE - GRN, when the shipment arrives
+  grn_number string
+  purchase_order_id string
+  receiving_location_id string
+  received_by_user_id string
+  vendor_invoice_no string
+  delivery_challan_no string
+  received_at datetime
+  status string                   // pending_qc | accepted | partially_accepted | rejected
+  notes text
+}
+
+goods_receipt_items [icon: check-square, color: yellow] {
+  id string pk                    // NEW TABLE
+  goods_receipt_id string
+  purchase_order_item_id string
+  quantity_received int
+  quantity_accepted int
+  quantity_rejected int
+  rejection_reason string
+}
+
+warranties [icon: shield, color: green] {
+  id string pk                    // NEW TABLE - one or more per device
+  device_id string
+  vendor_id string
+  warranty_type string            // manufacturer | extended | amc | seller
+  coverage string                 // parts | labour | onsite | replacement | comprehensive
+  start_basis string              // grn_date | install_date | custom
+  start_date date
+  end_date date
+  terms text
+  document_url text
+  status string                   // active | expired | void | claimed
+  created_at datetime
+}
+
+// ---- stubs (defined in other domains) ----
+devices [icon: camera, color: red] {
+  id string pk
+  code string
+  serial_number string
+  device_model_id string
+  goods_receipt_id string
+  purchase_order_item_id string
+}
+stock_locations [icon: archive, color: purple] {
+  id string pk
+}
+users [icon: user, color: gray] {
+  id string pk
+}
+
+product_categories.id < product_types.category_id
+product_categories.id < device_models.category_id
+product_types.id < device_models.product_type_id
+hardware_types.id < device_models.hardware_type_id
+vendors.id < purchase_orders.vendor_id
+users.id < purchase_orders.ordered_by_user_id
+users.id < purchase_orders.approved_by_user_id
+purchase_orders.id < purchase_order_items.purchase_order_id
+device_models.id < purchase_order_items.device_model_id
+purchase_orders.id < goods_receipts.purchase_order_id
+stock_locations.id < goods_receipts.receiving_location_id
+users.id < goods_receipts.received_by_user_id
+goods_receipts.id < goods_receipt_items.goods_receipt_id
+purchase_order_items.id < goods_receipt_items.purchase_order_item_id
+device_models.id < devices.device_model_id
+goods_receipts.id < devices.goods_receipt_id
+purchase_order_items.id < devices.purchase_order_item_id
+devices.id < warranties.device_id
+vendors.id < warranties.vendor_id

@@ -1,0 +1,140 @@
+// ===== FIXLY v2 - DOMAIN 1: ORGANIZATION, SITES & ACCESS =====
+// Platform (Fixly super admin) -> Company (customer org) -> Client (site/facility) -> Zone (area, nested)
+// NEW/CHANGED columns are marked with  // NEW  or  // CHG
+
+companies [icon: building, color: blue] {
+  id string pk
+  company_code string        // NEW  short code e.g. RZS
+  name string
+  status string              // active | inactive | suspended  (CHG)
+  contact_name string        // NEW
+  contact_email string       // NEW
+  contact_phone string       // NEW
+  gst_number string          // NEW
+  address text               // NEW
+  created_at datetime
+  updated_at datetime
+}
+
+clients [icon: map-pin, color: blue] {
+  id string pk
+  company_id string
+  client_code string         // NEW
+  name string
+  type string
+  facility_name string
+  location string
+  image_url text
+  latitude decimal
+  longitude decimal
+  map_x double
+  map_y double
+  pin_color string
+  contact_person string      // NEW
+  contact_phone string       // NEW
+  created_at datetime
+  updated_at datetime
+}
+
+verticals [icon: layers, color: blue] {
+  id string pk
+  key string
+  name string
+  created_at datetime
+}
+
+client_verticals [icon: link, color: blue] {
+  id string pk
+  client_id string
+  vertical_id string
+  active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+zones [icon: grid, color: blue] {
+  id string pk
+  client_id string
+  parent_zone_id string
+  name string
+  logo_url string
+  status string
+  created_by string
+  created_at datetime
+  updated_at datetime
+}
+
+zone_assignments [icon: user-check, color: blue] {
+  id string pk
+  zone_id string
+  user_id string
+  role string                // incharge | staff
+  assigned_at datetime
+  unassigned_at datetime
+}
+
+users [icon: user, color: green] {
+  id string pk
+  company_id string          // null for platform staff
+  client_id string
+  name string
+  email string
+  phone string               // NEW
+  password_hash string
+  role string                // CHG super_admin | inventory_manager | company_admin | company_storekeeper | client_admin | client_storekeeper | zone_incharge | zone_staff | technician
+  account_status string
+  last_login_at datetime     // NEW
+  created_at datetime
+  updated_at datetime
+}
+
+technicians [icon: tool, color: green] {
+  id string pk
+  user_id string
+  employee_code string       // NEW
+  specialization string
+  is_available boolean       // NEW
+  created_at datetime
+}
+
+technician_assignments [icon: link, color: green] {
+  id string pk
+  technician_id string
+  client_id string
+  zone_id string
+}
+
+refresh_tokens [icon: key, color: gray] {
+  id string pk
+  user_id string
+  token_hash string
+  expires_at datetime
+  revoked_at datetime
+  created_at datetime
+}
+
+device_tokens [icon: smartphone, color: gray] {
+  id string pk
+  user_id string
+  token string
+  platform string
+  created_at datetime
+  updated_at datetime
+}
+
+companies.id < clients.company_id
+companies.id < users.company_id
+clients.id < users.client_id
+clients.id < client_verticals.client_id
+verticals.id < client_verticals.vertical_id
+clients.id < zones.client_id
+zones.id < zones.parent_zone_id
+users.id < zones.created_by
+zones.id < zone_assignments.zone_id
+users.id < zone_assignments.user_id
+users.id - technicians.user_id
+technicians.id < technician_assignments.technician_id
+clients.id < technician_assignments.client_id
+zones.id < technician_assignments.zone_id
+users.id < refresh_tokens.user_id
+users.id < device_tokens.user_id

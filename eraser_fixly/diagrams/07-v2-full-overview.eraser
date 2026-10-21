@@ -1,0 +1,294 @@
+// ===== FIXLY v2 - FULL SYSTEM OVERVIEW (all tables, key columns only) =====
+// blue=organization  green=people/service  orange=catalog  yellow=procurement  purple=inventory/issues  red=device core  gray=end of life
+// Detailed column-level diagrams for each domain are on the other canvases.
+
+companies [icon: building, color: blue] {
+  id string pk
+  name string
+  status string
+}
+clients [icon: map-pin, color: blue] {
+  id string pk
+  company_id string
+  name string
+}
+verticals [icon: layers, color: blue] {
+  id string pk
+  name string
+}
+client_verticals [icon: link, color: blue] {
+  id string pk
+  client_id string
+  vertical_id string
+}
+zones [icon: grid, color: blue] {
+  id string pk
+  client_id string
+  parent_zone_id string
+  name string
+}
+zone_assignments [icon: user-check, color: blue] {
+  id string pk
+  zone_id string
+  user_id string
+}
+users [icon: user, color: green] {
+  id string pk
+  company_id string
+  client_id string
+  role string
+}
+technicians [icon: tool, color: green] {
+  id string pk
+  user_id string
+}
+technician_assignments [icon: link, color: green] {
+  id string pk
+  technician_id string
+  client_id string
+  zone_id string
+}
+
+product_categories [icon: tag, color: orange] {
+  id string pk
+  code string
+}
+product_types [icon: tag, color: orange] {
+  id string pk
+  category_id string
+}
+hardware_types [icon: cpu, color: orange] {
+  id string pk
+  spec_fields json
+}
+device_models [icon: box, color: orange] {
+  id string pk
+  category_id string
+  product_type_id string
+  hardware_type_id string
+  manufacturer string
+  default_warranty_months int
+}
+
+vendors [icon: truck, color: yellow] {
+  id string pk
+  vendor_type string
+}
+purchase_orders [icon: file-text, color: yellow] {
+  id string pk
+  vendor_id string
+  status string
+}
+purchase_order_items [icon: list, color: yellow] {
+  id string pk
+  purchase_order_id string
+  device_model_id string
+  quantity_ordered int
+}
+goods_receipts [icon: package, color: yellow] {
+  id string pk
+  purchase_order_id string
+  receiving_location_id string
+}
+goods_receipt_items [icon: check-square, color: yellow] {
+  id string pk
+  goods_receipt_id string
+  purchase_order_item_id string
+}
+warranties [icon: shield, color: green] {
+  id string pk
+  device_id string
+  vendor_id string
+  end_date date
+}
+
+stock_locations [icon: archive, color: purple] {
+  id string pk
+  location_type string
+  company_id string
+  client_id string
+  vendor_id string
+}
+stock_transfers [icon: truck, color: purple] {
+  id string pk
+  transfer_type string
+  from_location_id string
+  to_location_id string
+  status string
+}
+stock_transfer_items [icon: list, color: purple] {
+  id string pk
+  transfer_id string
+  device_id string
+}
+device_allocations [icon: user-check, color: purple] {
+  id string pk
+  device_id string
+  company_id string
+  client_id string
+  transfer_id string
+}
+
+devices [icon: camera, color: red] {
+  id string pk
+  code string
+  serial_number string
+  device_model_id string
+  owner_company_id string
+  current_company_id string
+  current_client_id string
+  current_zone_id string
+  current_location_id string
+  lifecycle_status string
+  goods_receipt_id string
+}
+device_installations [icon: map-pin, color: red] {
+  id string pk
+  device_id string
+  zone_id string
+  installed_by_technician_id string
+  status string
+}
+device_lifecycle_events [icon: clock, color: red] {
+  id string pk
+  device_id string
+  event_type string
+  occurred_at datetime
+}
+device_documents [icon: file-text, color: red] {
+  id string pk
+  device_id string
+  doc_type string
+}
+daily_status_logs [icon: activity, color: red] {
+  id string pk
+  device_id string
+  status string
+}
+device_disposals [icon: trash, color: gray] {
+  id string pk
+  device_id string
+  disposal_method string
+}
+
+issue_categories [icon: list, color: purple] {
+  id string pk
+  category_id string
+}
+issues [icon: alert-triangle, color: purple] {
+  id string pk
+  device_id string
+  assigned_technician_id string
+  warranty_id string
+  status string
+  resolution_type string
+}
+issue_status_history [icon: clock, color: purple] {
+  id string pk
+  issue_id string
+}
+service_visits [icon: tool, color: green] {
+  id string pk
+  issue_id string
+  technician_id string
+  outcome string
+}
+replacement_requests [icon: refresh-cw, color: purple] {
+  id string pk
+  issue_id string
+  faulty_device_id string
+  replacement_device_id string
+  stock_transfer_id string
+  status string
+}
+repair_orders [icon: wrench, color: green] {
+  id string pk
+  device_id string
+  issue_id string
+  warranty_id string
+  vendor_id string
+  repair_type string
+  status string
+}
+repair_parts [icon: settings, color: green] {
+  id string pk
+  repair_order_id string
+}
+
+// ---- Organization & access ----
+companies.id < clients.company_id
+companies.id < users.company_id
+clients.id < users.client_id
+clients.id < client_verticals.client_id
+verticals.id < client_verticals.vertical_id
+clients.id < zones.client_id
+zones.id < zones.parent_zone_id
+zones.id < zone_assignments.zone_id
+users.id < zone_assignments.user_id
+users.id - technicians.user_id
+technicians.id < technician_assignments.technician_id
+clients.id < technician_assignments.client_id
+zones.id < technician_assignments.zone_id
+
+// ---- Catalog & procurement ----
+product_categories.id < product_types.category_id
+product_categories.id < device_models.category_id
+product_types.id < device_models.product_type_id
+hardware_types.id < device_models.hardware_type_id
+vendors.id < purchase_orders.vendor_id
+purchase_orders.id < purchase_order_items.purchase_order_id
+device_models.id < purchase_order_items.device_model_id
+purchase_orders.id < goods_receipts.purchase_order_id
+goods_receipts.id < goods_receipt_items.goods_receipt_id
+purchase_order_items.id < goods_receipt_items.purchase_order_item_id
+goods_receipts.id < devices.goods_receipt_id
+device_models.id < devices.device_model_id
+devices.id < warranties.device_id
+vendors.id < warranties.vendor_id
+
+// ---- Inventory & custody ----
+companies.id < stock_locations.company_id
+clients.id < stock_locations.client_id
+vendors.id < stock_locations.vendor_id
+stock_locations.id < goods_receipts.receiving_location_id
+stock_locations.id < stock_transfers.from_location_id
+stock_locations.id < stock_transfers.to_location_id
+stock_transfers.id < stock_transfer_items.transfer_id
+devices.id < stock_transfer_items.device_id
+devices.id < device_allocations.device_id
+companies.id < device_allocations.company_id
+clients.id < device_allocations.client_id
+stock_transfers.id < device_allocations.transfer_id
+stock_locations.id < devices.current_location_id
+companies.id < devices.owner_company_id
+companies.id < devices.current_company_id
+clients.id < devices.current_client_id
+zones.id < devices.current_zone_id
+
+// ---- Device core ----
+devices.id < device_installations.device_id
+zones.id < device_installations.zone_id
+technicians.id < device_installations.installed_by_technician_id
+devices.id < device_lifecycle_events.device_id
+devices.id < device_documents.device_id
+devices.id < daily_status_logs.device_id
+devices.id < device_disposals.device_id
+
+// ---- Issues, service, repair, replacement ----
+devices.id < issues.device_id
+issue_categories.id < issues.category_id
+product_categories.id < issue_categories.category_id
+technicians.id < issues.assigned_technician_id
+warranties.id < issues.warranty_id
+issues.id < issue_status_history.issue_id
+issues.id < service_visits.issue_id
+technicians.id < service_visits.technician_id
+issues.id < replacement_requests.issue_id
+devices.id < replacement_requests.faulty_device_id
+devices.id < replacement_requests.replacement_device_id
+stock_transfers.id < replacement_requests.stock_transfer_id
+devices.id < repair_orders.device_id
+issues.id < repair_orders.issue_id
+warranties.id < repair_orders.warranty_id
+vendors.id < repair_orders.vendor_id
+repair_orders.id < repair_parts.repair_order_id

@@ -1,0 +1,253 @@
+// ===== FIXLY v1 - CURRENT SCHEMA (as-is, from u516064072_fixly.sql) =====
+
+companies [icon: building, color: blue] {
+  id string pk
+  name string
+  status string
+  created_at datetime
+  updated_at datetime
+}
+
+clients [icon: map-pin, color: blue] {
+  id string pk
+  company_id string
+  name string
+  type string
+  facility_name string
+  location string
+  image_url text
+  latitude decimal
+  longitude decimal
+  map_x double
+  map_y double
+  pin_color string
+  created_at datetime
+  updated_at datetime
+}
+
+verticals [icon: layers, color: blue] {
+  id string pk
+  key string
+  name string
+  created_at datetime
+}
+
+client_verticals [icon: link, color: blue] {
+  id string pk
+  client_id string
+  vertical_id string
+  active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+zones [icon: grid, color: blue] {
+  id string pk
+  client_id string
+  parent_zone_id string
+  name string
+  logo_url string
+  status string
+  created_by string
+  created_at datetime
+  updated_at datetime
+}
+
+zone_assignments [icon: user-check, color: blue] {
+  id string pk
+  zone_id string
+  user_id string
+  role string
+  assigned_at datetime
+  unassigned_at datetime
+}
+
+users [icon: user, color: green] {
+  id string pk
+  company_id string
+  client_id string
+  name string
+  email string
+  password_hash string
+  role string
+  account_status string
+  created_at datetime
+  updated_at datetime
+}
+
+refresh_tokens [icon: key, color: green] {
+  id string pk
+  user_id string
+  token_hash string
+  expires_at datetime
+  revoked_at datetime
+  created_at datetime
+}
+
+device_tokens [icon: smartphone, color: green] {
+  id string pk
+  user_id string
+  token string
+  platform string
+  created_at datetime
+  updated_at datetime
+}
+
+technicians [icon: tool, color: green] {
+  id string pk
+  user_id string
+  specialization string
+  created_at datetime
+}
+
+technician_assignments [icon: link, color: green] {
+  id string pk
+  technician_id string
+  client_id string
+  zone_id string
+}
+
+product_categories [icon: tag, color: orange] {
+  id string pk
+  name string
+  code string
+  last_seq int
+  image_url text
+  created_at datetime
+}
+
+product_types [icon: tag, color: orange] {
+  id string pk
+  category_id string
+  name string
+  image_url text
+  created_at datetime
+}
+
+hardware_types [icon: cpu, color: orange] {
+  id string pk
+  name string
+  spec_fields json
+  created_at datetime
+}
+
+devices [icon: camera, color: red] {
+  id string pk
+  company_id string
+  zone_id string
+  category_id string
+  product_type_id string
+  hardware_type_id string
+  code string
+  name string
+  location string
+  unit_price decimal
+  purchase_date date
+  install_date date
+  image_url text
+  status string
+  is_manual_entry boolean
+  custom_spec json
+  added_by string
+  created_at datetime
+  updated_at datetime
+}
+
+daily_status_logs [icon: activity, color: red] {
+  id string pk
+  device_id string
+  logged_by_user_id string
+  status string
+  log_date date
+  notes text
+  created_at datetime
+}
+
+issue_categories [icon: list, color: purple] {
+  id string pk
+  category_id string
+  name string
+}
+
+issues [icon: alert-triangle, color: purple] {
+  id string pk
+  device_id string
+  category_id string
+  raised_by_user_id string
+  assigned_technician_id string
+  priority string
+  status string
+  description text
+  attachments json
+  created_at datetime
+  updated_at datetime
+  resolved_at datetime
+  closed_at datetime
+}
+
+issue_status_history [icon: clock, color: purple] {
+  id string pk
+  issue_id string
+  from_status string
+  to_status string
+  changed_by_user_id string
+  changed_at datetime
+  notes text
+  latitude decimal
+  longitude decimal
+}
+
+replacement_requests [icon: refresh-cw, color: purple] {
+  id string pk
+  issue_id string
+  requested_by_user_id string
+  reviewed_by_user_id string
+  status string
+  reason string
+  replacement_choice string
+  spare_device_id string
+  spare_device_name string
+  spare_device_code string
+  notes text
+  review_note text
+  created_at datetime
+  reviewed_at datetime
+  completed_at datetime
+}
+
+// ---------- relationships ----------
+companies.id < clients.company_id
+companies.id < users.company_id
+companies.id < devices.company_id
+clients.id < client_verticals.client_id
+verticals.id < client_verticals.vertical_id
+clients.id < zones.client_id
+zones.id < zones.parent_zone_id
+users.id < zones.created_by
+clients.id < users.client_id
+zones.id < zone_assignments.zone_id
+users.id < zone_assignments.user_id
+users.id < refresh_tokens.user_id
+users.id < device_tokens.user_id
+users.id - technicians.user_id
+technicians.id < technician_assignments.technician_id
+clients.id < technician_assignments.client_id
+zones.id < technician_assignments.zone_id
+product_categories.id < product_types.category_id
+product_categories.id < issue_categories.category_id
+product_categories.id < devices.category_id
+product_types.id < devices.product_type_id
+hardware_types.id < devices.hardware_type_id
+zones.id < devices.zone_id
+users.id < devices.added_by
+devices.id < daily_status_logs.device_id
+users.id < daily_status_logs.logged_by_user_id
+devices.id < issues.device_id
+issue_categories.id < issues.category_id
+users.id < issues.raised_by_user_id
+technicians.id < issues.assigned_technician_id
+issues.id < issue_status_history.issue_id
+users.id < issue_status_history.changed_by_user_id
+issues.id < replacement_requests.issue_id
+users.id < replacement_requests.requested_by_user_id
+users.id < replacement_requests.reviewed_by_user_id

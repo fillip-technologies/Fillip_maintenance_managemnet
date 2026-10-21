@@ -1,0 +1,92 @@
+title Fixly v2 - Fault Handling - Warranty, Repair and Replacement
+
+Triage [color: orange, icon: alert-triangle] {
+  Issue Raised [shape: oval]
+  Check Warranty Status
+  Assign Technician
+  Technician Visits Site
+  Diagnose
+  Fixed On Site [shape: diamond]
+  Close Issue
+}
+
+Warranty Path [color: green, icon: shield] {
+  Warranty Valid [shape: diamond]
+  Raise Warranty Claim
+  Vendor Decision [shape: diamond]
+  Vendor Sends Replacement
+  Vendor RMA Repair
+}
+
+Paid Path [color: yellow, icon: dollar-sign] {
+  Repair or Replace [shape: diamond]
+  Cost Approval
+}
+
+Replacement [color: purple, icon: refresh-cw] {
+  Replacement Request
+  Approved [shape: diamond]
+  Pick Spare from Client or Company or Platform Stock
+  Stock Transfer to Site
+  Technician Swaps Device
+  New Device Installed and Active [shape: oval]
+  Old Device Disposition [shape: diamond]
+}
+
+Repair [color: red, icon: wrench] {
+  Create Repair Order
+  Pickup and Transfer to Repair Center
+  Repair Work
+  Repaired [shape: diamond]
+  QC and Return to Stock as Refurbished
+  Back in Stock [shape: oval]
+  Reinstall Same or Different Zone
+}
+
+End of Life [color: gray, icon: trash] {
+  Retire Device
+  Disposal with Data Wipe Certificate [shape: oval]
+}
+
+Issue Raised > Check Warranty Status
+Check Warranty Status > Assign Technician
+Assign Technician > Technician Visits Site
+Technician Visits Site > Diagnose
+Diagnose > Fixed On Site
+Fixed On Site > Close Issue: Yes
+Close Issue > New Device Installed and Active: Device stays Active
+Fixed On Site > Warranty Valid: No
+
+Warranty Valid > Raise Warranty Claim: In Warranty
+Warranty Valid > Repair or Replace: Out of Warranty
+Raise Warranty Claim > Vendor Decision
+Vendor Decision > Vendor Sends Replacement: Replace
+Vendor Decision > Vendor RMA Repair: Repair
+Vendor Sends Replacement > Replacement Request
+Vendor RMA Repair > Create Repair Order
+
+Repair or Replace > Cost Approval
+Cost Approval > Create Repair Order: Repair
+Cost Approval > Replacement Request: Replace
+Cost Approval > Retire Device: Not worth it
+
+Replacement Request > Approved
+Approved > Pick Spare from Client or Company or Platform Stock: Yes
+Approved > Close Issue: Rejected
+Pick Spare from Client or Company or Platform Stock > Stock Transfer to Site
+Stock Transfer to Site > Technician Swaps Device
+Technician Swaps Device > New Device Installed and Active
+Technician Swaps Device > Old Device Disposition
+Old Device Disposition > Create Repair Order: To Repair or Vendor RMA
+Old Device Disposition > Retire Device: Scrap
+
+Create Repair Order > Pickup and Transfer to Repair Center
+Pickup and Transfer to Repair Center > Repair Work
+Repair Work > Repaired
+Repaired > QC and Return to Stock as Refurbished: Yes
+Repaired > Retire Device: Beyond Repair
+QC and Return to Stock as Refurbished > Back in Stock
+Back in Stock > Reinstall Same or Different Zone: When needed
+Reinstall Same or Different Zone > New Device Installed and Active
+
+Retire Device > Disposal with Data Wipe Certificate

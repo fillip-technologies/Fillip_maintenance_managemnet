@@ -1,0 +1,191 @@
+// ===== FIXLY v2 - DOMAIN 5: ISSUES, SERVICE VISITS, WARRANTY CLAIM, REPAIR & REPLACEMENT =====
+
+issue_categories [icon: list, color: purple] {
+  id string pk
+  category_id string
+  name string
+}
+
+issues [icon: alert-triangle, color: purple] {
+  id string pk
+  issue_number string             // NEW human readable e.g. ISS-000123
+  device_id string
+  category_id string
+  installation_id string          // NEW which placement it happened at
+  zone_id string                  // NEW snapshot for reporting
+  client_id string                // NEW snapshot
+  company_id string               // NEW snapshot
+  raised_by_user_id string
+  raised_via string               // NEW manual | daily_log | auto_alert
+  assigned_technician_id string
+  priority string
+  status string                   // open | assigned | in_progress | on_hold | resolved | closed | reopened
+  description text
+  attachments json
+  warranty_id string              // NEW warranty checked at raise time
+  warranty_status string          // NEW in_warranty | out_of_warranty | unknown
+  diagnosis_summary text          // NEW
+  resolution_type string          // NEW fixed_onsite | replaced | repaired_offsite | warranty_rma | no_fault_found | not_repairable
+  sla_due_at datetime             // NEW
+  created_at datetime
+  updated_at datetime
+  resolved_at datetime
+  closed_at datetime
+}
+
+issue_status_history [icon: clock, color: purple] {
+  id string pk
+  issue_id string
+  from_status string
+  to_status string
+  changed_by_user_id string
+  changed_at datetime
+  notes text
+  latitude decimal
+  longitude decimal
+}
+
+service_visits [icon: tool, color: green] {
+  id string pk                    // NEW TABLE - electrician / technician goes to site
+  issue_id string
+  technician_id string
+  visit_type string               // diagnosis | onsite_repair | replacement_swap | removal | preventive
+  status string                   // scheduled | en_route | on_site | completed | cancelled | no_access
+  scheduled_at datetime
+  checked_in_at datetime
+  checked_out_at datetime
+  check_in_latitude decimal
+  check_in_longitude decimal
+  findings text
+  action_taken text
+  outcome string                  // fixed | needs_replacement | needs_repair | no_fault_found | parts_pending
+  parts_used json
+  photo_urls json
+  client_signature_url text
+  created_at datetime
+}
+
+replacement_requests [icon: refresh-cw, color: purple] {
+  id string pk                    // existing - extended
+  issue_id string
+  faulty_device_id string         // NEW
+  replacement_device_id string    // NEW real FK (replaces spare_device_id / name / code text copies)
+  warranty_id string              // NEW
+  replacement_basis string        // NEW warranty | paid | goodwill | insurance
+  source_location_id string       // NEW where the spare comes from
+  status string                   // pending | approved | rejected | dispatched | installed | completed | cancelled
+  reason string
+  replacement_choice string
+  old_device_disposition string   // NEW to_repair | vendor_rma | return_to_stock | scrap
+  cost_borne_by string            // NEW vendor | platform | company | client
+  cost_amount decimal             // NEW
+  stock_transfer_id string        // NEW spare dispatch document
+  new_installation_id string      // NEW where the spare was installed
+  requested_by_user_id string
+  reviewed_by_user_id string
+  notes text
+  review_note text
+  created_at datetime
+  reviewed_at datetime
+  completed_at datetime
+}
+
+repair_orders [icon: wrench, color: green] {
+  id string pk                    // NEW TABLE - goes out for repair and comes back
+  repair_number string
+  device_id string
+  issue_id string
+  replacement_request_id string
+  repair_type string              // onsite | in_house | service_center | vendor_rma
+  is_warranty_claim boolean
+  warranty_id string
+  vendor_id string
+  repair_location_id string       // service center / vendor location
+  rma_number string
+  status string                   // created | awaiting_pickup | in_transit_out | at_repair_center | diagnosing | awaiting_cost_approval | repairing | repaired | unrepairable | replaced_by_vendor | in_transit_back | closed | cancelled
+  problem_description text
+  diagnosis text
+  work_done text
+  outcome string                  // repaired | replaced_by_vendor | beyond_repair | no_fault_found
+  cost_estimate decimal
+  final_cost decimal
+  cost_borne_by string            // vendor | platform | company | client
+  outbound_transfer_id string
+  return_transfer_id string
+  return_location_id string       // where it goes AFTER repair
+  sent_at datetime
+  repaired_at datetime
+  returned_at datetime
+  created_by_user_id string
+  created_at datetime
+  closed_at datetime
+}
+
+repair_parts [icon: settings, color: green] {
+  id string pk                    // NEW TABLE
+  repair_order_id string
+  part_name string
+  part_number string
+  quantity int
+  unit_cost decimal
+  covered_by_warranty boolean
+}
+
+// ---- stubs ----
+devices [icon: camera, color: red] {
+  id string pk
+  code string
+  lifecycle_status string
+}
+warranties [icon: shield, color: green] {
+  id string pk
+  end_date date
+}
+technicians [icon: tool, color: green] {
+  id string pk
+}
+users [icon: user, color: gray] {
+  id string pk
+}
+vendors [icon: truck, color: yellow] {
+  id string pk
+}
+stock_locations [icon: archive, color: purple] {
+  id string pk
+}
+stock_transfers [icon: truck, color: purple] {
+  id string pk
+}
+device_installations [icon: map-pin, color: red] {
+  id string pk
+}
+
+devices.id < issues.device_id
+issue_categories.id < issues.category_id
+device_installations.id < issues.installation_id
+users.id < issues.raised_by_user_id
+technicians.id < issues.assigned_technician_id
+warranties.id < issues.warranty_id
+issues.id < issue_status_history.issue_id
+users.id < issue_status_history.changed_by_user_id
+issues.id < service_visits.issue_id
+technicians.id < service_visits.technician_id
+issues.id < replacement_requests.issue_id
+devices.id < replacement_requests.faulty_device_id
+devices.id < replacement_requests.replacement_device_id
+warranties.id < replacement_requests.warranty_id
+stock_locations.id < replacement_requests.source_location_id
+stock_transfers.id < replacement_requests.stock_transfer_id
+device_installations.id < replacement_requests.new_installation_id
+users.id < replacement_requests.requested_by_user_id
+users.id < replacement_requests.reviewed_by_user_id
+devices.id < repair_orders.device_id
+issues.id < repair_orders.issue_id
+replacement_requests.id < repair_orders.replacement_request_id
+warranties.id < repair_orders.warranty_id
+vendors.id < repair_orders.vendor_id
+stock_locations.id < repair_orders.repair_location_id
+stock_locations.id < repair_orders.return_location_id
+stock_transfers.id < repair_orders.outbound_transfer_id
+stock_transfers.id < repair_orders.return_transfer_id
+repair_orders.id < repair_parts.repair_order_id
