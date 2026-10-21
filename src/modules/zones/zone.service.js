@@ -241,6 +241,25 @@ export const zoneService = {
     if (childCount > 0) {
       throw ApiError.conflict('Delete sub-zones first before deleting this zone');
     }
+    // A zone with devices in it is not deleted: under the v2 location model that
+    // would silently turn installed units into stock (integration plan §6 change 14).
+    const deviceCount = await prisma.device.count({ where: { zoneId: id } });
+    if (deviceCount > 0) {
+      throw ApiError.conflict(
+        `This zone has ${deviceCount} device(s). Move or remove them before deleting the zone.`,
+        { deviceCount },
+        'ZONE_HAS_DEVICES',
+      );
+    }
+    // Past installations are device history; keep the zone and set it inactive instead.
+    const pastInstallations = await prisma.deviceInstallation.count({ where: { zoneId: id } });
+    if (pastInstallations > 0) {
+      throw ApiError.conflict(
+        'Devices have been installed in this zone before. Set the zone inactive instead of deleting it.',
+        { installationCount: pastInstallations },
+        'ZONE_HAS_HISTORY',
+      );
+    }
     await prisma.zone.delete({ where: { id } });
     return zone;
   },

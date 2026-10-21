@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { clientScopeWhere, combine } from '../../authz/scope.js';
+import { removeEmptyStores } from '../inventory/domain/stores.js';
 
 export const clientService = {
   async list({ page, limit, search, companyId }, scope) {
@@ -241,6 +242,19 @@ export const clientService = {
 
   async remove(id) {
     await this.getById(id);
+
+    // Devices are never returned to stock by deleting their site (integration plan §6 change 14).
+    const deviceCount = await prisma.device.count({
+      where: { OR: [{ zone: { clientId: id } }, { currentClientId: id }] },
+    });
+    if (deviceCount > 0) {
+      throw ApiError.conflict(
+        `This client has ${deviceCount} device(s). Move them to another site before deleting it.`,
+        { deviceCount },
+        'CLIENT_HAS_DEVICES',
+      );
+    }
+    await removeEmptyStores({ clientId: id });
 
     // Delete all users belonging to this client first (User.clientId is SetNull,
     // so they would be orphaned rather than removed without this explicit step).

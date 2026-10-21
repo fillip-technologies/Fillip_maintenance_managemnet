@@ -81,6 +81,35 @@ const envSchema = z.object({
   APP_NAME: z.string().default('Fixly'),
   // Base URL of the frontend, used in email copy (login link).
   APP_URL: z.string().default('http://localhost:5173'),
+
+  // --- Fixly v2 inventory service (FBOS integration) ---
+  // The FBOS Identity organization that runs the hardware business. Stamped on
+  // every inventory row; the v2 API only answers callers acting in it.
+  FBOS_ORGANIZATION_ID: z.string().uuid().optional(),
+  // Open decision D3: who owns a device after delivery. Default for backfilled
+  // and newly registered devices until the product owner answers.
+  INVENTORY_DEFAULT_OWNERSHIP: z
+    .enum(['platform_owned', 'company_owned', 'client_owned', 'leased'])
+    .default('company_owned'),
+  // Mounts /api/inventory/v1. Off by default so a deploy never exposes it before
+  // Identity carries the inventory permission codes.
+  INVENTORY_API_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  FBOS_IDENTITY_URL: z.string().url().default('http://localhost:8001'),
+  FBOS_COMMUNICATION_URL: z.string().url().optional(),
+  // Shared with every FBOS service (X-FBOS-Internal-Token). Identity skips the
+  // check in development when it is unset.
+  FBOS_INTERNAL_TOKEN: z.string().default(''),
+  FBOS_IDENTITY_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  // Seconds an Identity actor answer is reused, like the legacy authenticate cache.
+  FBOS_ACTOR_CACHE_SECONDS: z.coerce.number().int().nonnegative().default(30),
+  // Run the outbox worker inside this process (off in tests and one-off scripts).
+  OUTBOX_WORKER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

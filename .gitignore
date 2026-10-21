@@ -27,3 +27,5 @@ coverage/
 
 Maintainance_management
 flutter_app
+# Local FBOS dev bootstrap output (ids, test passwords)
+scripts/v2/.fbos-dev.json

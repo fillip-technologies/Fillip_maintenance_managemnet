@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { syncManyFromLegacy } from '../inventory/domain/deviceState.js';
 import { reserveCodes } from '../productCategories/productCategory.service.js';
 
 /**
@@ -210,6 +211,8 @@ export const deviceImportService = {
           }
         }
         await tx.device.createMany({ data });
+        const rows = await tx.device.findMany({ where: { code: { in: data.map((d) => d.code) } }, select: { id: true } });
+        await syncManyFromLegacy(tx, rows.map((r) => r.id), { legacyUserId: user.id, eventType: 'registered', notes: 'Bulk import' });
         created += data.length;
       }
     }, { maxWait: 15_000, timeout: 60_000 });

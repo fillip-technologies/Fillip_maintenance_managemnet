@@ -17,7 +17,10 @@
     "db:seed": "node prisma/seed.js",
     "db:verify": "node scripts/db_verify.mjs",
     "db:migrate-to-mysql": "node scripts/migrate_to_mysql.mjs",
-    "test:unit": "node --test scripts/*.test.mjs"
+    "test:unit": "node --test scripts/*.test.mjs",
+    "v2:reset-local-db": "sh scripts/v2/reset_local_db.sh",
+    "v2:backfill": "node scripts/v2/backfill.mjs",
+    "v2:smoke": "node scripts/v2/legacy_smoke.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

@@ -86,6 +86,218 @@ enum DailyStatus {
   needs_attention
 }
 
+// --- v2 enums -----------------------------------------------------------------
+
+// Where a device is in its life (design doc §5). Added beside the legacy
+// `devices.status`, which the v1 apps still read until Phase 6.
+enum LifecycleState {
+  in_platform_stock
+  reserved
+  in_transit
+  in_company_stock
+  in_client_stock
+  installed
+  under_maintenance
+  faulty
+  pending_replacement
+  under_repair
+  at_vendor_rma
+  retired
+  disposed
+  lost
+}
+
+enum OwnershipType {
+  platform_owned
+  company_owned
+  client_owned
+  leased
+}
+
+enum DeviceCondition {
+  new
+  good
+  refurbished
+  damaged
+  unknown
+}
+
+enum VendorType {
+  manufacturer
+  distributor
+  service_center
+  other
+}
+
+enum PurchaseOrderStatus {
+  draft
+  submitted
+  approved
+  partially_received
+  received
+  cancelled
+}
+
+enum GoodsReceiptStatus {
+  accepted
+  partially_accepted
+  rejected
+}
+
+enum WarrantyType {
+  manufacturer
+  extended
+  amc
+  seller
+}
+
+enum WarrantyStatus {
+  active
+  expired
+  void
+}
+
+enum StockLocationType {
+  platform_warehouse
+  company_store
+  client_store
+  in_transit
+  vendor
+  service_center
+  disposal
+}
+
+enum StockTransferType {
+  platform_to_company
+  company_to_client
+  client_to_client
+  return_to_company
+  return_to_platform
+  replacement_dispatch
+  to_repair
+  from_repair
+  to_vendor_rma
+  from_vendor_rma
+}
+
+enum StockTransferStatus {
+  draft
+  approved
+  dispatched
+  received
+  partially_received
+  rejected
+  cancelled
+}
+
+enum TransferItemStatus {
+  pending
+  in_transit
+  received
+  damaged
+  missing
+  cancelled
+}
+
+enum AllocationType {
+  ownership
+  custody
+  loan
+}
+
+enum InstallationStatus {
+  active
+  removed
+}
+
+enum InstallationType {
+  new_install
+  replacement
+  reinstall_after_repair
+  relocation
+  imported_from_v1
+}
+
+enum DeviceDocType {
+  invoice
+  warranty_card
+  photo
+  rma_form
+  disposal_certificate
+  other
+}
+
+enum DisposalMethod {
+  scrap
+  sold
+  recycled
+  returned_to_vendor
+  donated
+}
+
+enum DisposalStatus {
+  pending
+  approved
+  rejected
+  completed
+}
+
+enum IssueWarrantyStatus {
+  in_warranty
+  out_of_warranty
+  unknown
+}
+
+enum VisitType {
+  corrective
+  preventive
+  installation
+  inspection
+}
+
+enum VisitStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+}
+
+enum VisitOutcome {
+  fixed
+  needs_parts
+  needs_replacement
+  needs_repair
+  not_reproducible
+  other
+}
+
+enum RepairType {
+  in_house
+  service_center
+  vendor_rma
+}
+
+enum RepairOrderStatus {
+  requested
+  approved
+  sent
+  returned
+  closed
+  cancelled
+}
+
+enum CostBorneBy {
+  customer
+  operator
+  vendor
+}
+
+enum OutboxStatus {
+  pending
+  delivered
+  failed
+}
+
 // ---------------------------------------------------------------------------
 // Hierarchy: Company → Client → Zone (self-referencing tree)
 // ---------------------------------------------------------------------------
@@ -97,10 +309,24 @@ model Company {
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
 
-  clients Client[]
-  users   User[]
-  devices Device[]
+  // v2: customer master fields and FBOS links. In the v2 API a company is a "customer".
+  companyCode    String? @unique @map("company_code") @db.VarChar(40)
+  contactName    String? @map("contact_name") @db.VarChar(160)
+  contactEmail   String? @map("contact_email") @db.VarChar(200)
+  contactPhone   String? @map("contact_phone") @db.VarChar(40)
+  gstNumber      String? @map("gst_number") @db.VarChar(20)
+  address        String? @db.Text
+  organizationId String? @map("organization_id") @db.Char(36) // FBOS Identity organization (the operator)
+  fbosCustomerId String? @map("fbos_customer_id") @db.Char(36) // FBOS Revenue client
+  fbosOrgUnitId  String? @map("fbos_org_unit_id") @db.Char(36) // Identity org unit for this customer
 
+  clients        Client[]
+  users          User[]
+  devices        Device[]
+  ownedDevices   Device[]        @relation("DeviceOwnerCompany")
+  stockLocations StockLocation[]
+
+  @@index([organizationId])
   @@map("companies")
 }
 
@@ -120,11 +346,20 @@ model Client {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  // v2: in the v2 API a client is a "site".
+  clientCode     String? @unique @map("client_code") @db.VarChar(40)
+  contactPerson  String? @map("contact_person") @db.VarChar(160)
+  contactPhone   String? @map("contact_phone") @db.VarChar(40)
+  organizationId String? @map("organization_id") @db.Char(36)
+  fbosOrgUnitId  String? @unique @map("fbos_org_unit_id") @db.Char(36) // Identity org unit; scopes customer staff
+
   company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   zones                 Zone[]
   users                 User[]
   technicianAssignments TechnicianAssignment[]
   clientVerticals       ClientVertical[]
+  devices               Device[]               @relation("DeviceCurrentClient")
+  stockLocations        StockLocation[]
 
   @@index([companyId])
   @@map("clients")
@@ -176,6 +411,7 @@ model Zone {
   assignments           ZoneAssignment[]
   devices               Device[]
   technicianAssignments TechnicianAssignment[]
+  installations         DeviceInstallation[]
 
   @@index([clientId, parentZoneId])
   @@map("zones")
@@ -211,7 +447,8 @@ model HardwareType {
   specFields Json     @map("spec_fields")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  devices Device[]
+  devices      Device[]
+  deviceModels DeviceModel[]
 
   @@map("hardware_types")
 }
@@ -241,6 +478,30 @@ model Device {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
+  // --- v2 (design doc §7.2). Until Phase 6 `companyId` is the current custody
+  // company, `zoneId` the current zone and `installDate` the first install date;
+  // they are renamed to current_company_id / current_zone_id / first_install_date then.
+  organizationId      String?          @map("organization_id") @db.Char(36)
+  deviceModelId       String?          @map("device_model_id") @db.Char(36)
+  serialNumber        String?          @map("serial_number") @db.VarChar(120)
+  macAddress          String?          @map("mac_address") @db.VarChar(40)
+  barcode             String?          @db.VarChar(120)
+  vendorId            String?          @map("vendor_id") @db.Char(36)
+  goodsReceiptId      String?          @map("goods_receipt_id") @db.Char(36)
+  purchaseOrderItemId String?          @map("purchase_order_item_id") @db.Char(36)
+  ownershipType       OwnershipType?   @map("ownership_type")
+  ownerCompanyId      String?          @map("owner_company_id") @db.Char(36)
+  currentClientId     String?          @map("current_client_id") @db.Char(36)
+  currentLocationId   String?          @map("current_location_id") @db.Char(36)
+  lifecycleState      LifecycleState?  @map("lifecycle_state")
+  healthStatus        DailyStatus?     @map("health_status")
+  condition           DeviceCondition?
+  receivedAt          DateTime?        @map("received_at")
+  warrantyEndDate     DateTime?        @map("warranty_end_date") @db.Date
+  repairCount         Int              @default(0) @map("repair_count")
+  version             Int              @default(1)
+  deletedAt           DateTime?        @map("deleted_at")
+
   // Zone SetNull (not Cascade): deleting a zone returns its units to stock
   // rather than destroying the (expensive) hardware records.
   company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -252,6 +513,28 @@ model Device {
   issues          Issue[]
   dailyStatusLogs DailyStatusLog[]
 
+  deviceModel        DeviceModel?           @relation(fields: [deviceModelId], references: [id], onDelete: Restrict)
+  vendor             Vendor?                @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  goodsReceipt       GoodsReceipt?          @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
+  purchaseOrderItem  PurchaseOrderItem?     @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  ownerCompany       Company?               @relation("DeviceOwnerCompany", fields: [ownerCompanyId], references: [id], onDelete: Restrict)
+  currentClient      Client?                @relation("DeviceCurrentClient", fields: [currentClientId], references: [id], onDelete: Restrict)
+  currentLocation    StockLocation?         @relation(fields: [currentLocationId], references: [id], onDelete: Restrict)
+  warranties         Warranty[]
+  transferItems      StockTransferItem[]
+  allocations        DeviceAllocation[]
+  installations      DeviceInstallation[]
+  lifecycleEvents    DeviceLifecycleEvent[]
+  documents          DeviceDocument[]
+  disposals          DeviceDisposal[]
+  repairOrders       RepairOrder[]
+  faultyReplacements ReplacementRequest[]   @relation("ReplacementFaultyDevice")
+  spareReplacements  ReplacementRequest[]   @relation("ReplacementSpareDevice")
+
+  @@unique([deviceModelId, serialNumber])
+  @@index([organizationId, lifecycleState])
+  @@index([currentClientId])
+  @@index([currentLocationId])
   @@index([zoneId, status])
   @@index([companyId])
   @@index([categoryId])
@@ -273,6 +556,7 @@ model ProductCategory {
   devices         Device[]
   issueCategories IssueCategory[]
   productTypes    ProductType[]
+  deviceModels    DeviceModel[]
 
   @@map("product_categories")
 }
@@ -284,8 +568,9 @@ model ProductType {
   imageUrl   String?  @map("image_url") @db.Text
   createdAt  DateTime @default(now()) @map("created_at")
 
-  category ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  devices  Device[]
+  category     ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  devices      Device[]
+  deviceModels DeviceModel[]
 
   @@unique([categoryId, name])
   @@index([categoryId])
@@ -328,13 +613,36 @@ model Issue {
   resolvedAt           DateTime?     @map("resolved_at")
   closedAt             DateTime?     @map("closed_at")
 
-  device              Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  // --- v2: snapshots of where the device was, warranty check at raise time, SLA.
+  organizationId    String?              @map("organization_id") @db.Char(36)
+  issueNumber       String?              @unique @map("issue_number") @db.VarChar(30)
+  installationId    String?              @map("installation_id") @db.Char(36)
+  zoneId            String?              @map("zone_id") @db.Char(36)
+  clientId          String?              @map("client_id") @db.Char(36)
+  companyId         String?              @map("company_id") @db.Char(36)
+  raisedVia         String?              @map("raised_via") @db.VarChar(20) // manual | daily_log | alert | mobile
+  warrantyId        String?              @map("warranty_id") @db.Char(36)
+  warrantyStatus    IssueWarrantyStatus? @map("warranty_status")
+  diagnosisSummary  String?              @map("diagnosis_summary") @db.Text
+  resolutionType    String?              @map("resolution_type") @db.VarChar(30) // fixed_onsite | replaced | repaired | ...
+  slaDueAt          DateTime?            @map("sla_due_at")
+  slaPolicyId       String?              @map("sla_policy_id") @db.Char(36)
+  approvalRequestId String?              @map("approval_request_id") @db.Char(36)
+  version           Int                  @default(1)
+
+  // Restrict, not Cascade: a device's issues are its history (design doc §8 rule 14).
+  device              Device               @relation(fields: [deviceId], references: [id], onDelete: Restrict)
   category            IssueCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   raisedBy            User?                @relation("IssueRaisedBy", fields: [raisedByUserId], references: [id], onDelete: SetNull)
   assignedTechnician  Technician?          @relation(fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
   statusHistory       IssueStatusHistory[]
   replacementRequests ReplacementRequest[]
+  installation        DeviceInstallation?  @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  warranty            Warranty?            @relation(fields: [warrantyId], references: [id], onDelete: Restrict)
+  serviceVisits       ServiceVisit[]
+  repairOrders        RepairOrder[]
 
+  @@index([clientId, status])
   @@index([status, assignedTechnicianId])
   @@index([deviceId, status])
   @@map("issues")
@@ -383,9 +691,26 @@ model ReplacementRequest {
   reviewedAt        DateTime?                @map("reviewed_at")
   completedAt       DateTime?                @map("completed_at")
 
-  issue       Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  requestedBy User? @relation("ReplacementRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
-  reviewedBy  User? @relation("ReplacementReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  // --- v2: real device links instead of the spare's copied name/code (deprecated).
+  organizationId       String?      @map("organization_id") @db.Char(36)
+  faultyDeviceId       String?      @map("faulty_device_id") @db.Char(36)
+  replacementDeviceId  String?      @map("replacement_device_id") @db.Char(36)
+  warrantyId           String?      @map("warranty_id") @db.Char(36)
+  replacementBasis     String?      @map("replacement_basis") @db.VarChar(20) // warranty | paid | goodwill
+  sourceLocationId     String?      @map("source_location_id") @db.Char(36)
+  oldDeviceDisposition String?      @map("old_device_disposition") @db.VarChar(20) // to_repair | vendor_rma | return_to_stock | scrap
+  costBorneBy          CostBorneBy? @map("cost_borne_by")
+  costAmount           Decimal?     @map("cost_amount") @db.Decimal(12, 2)
+  stockTransferId      String?      @map("stock_transfer_id") @db.Char(36)
+  newInstallationId    String?      @map("new_installation_id") @db.Char(36)
+
+  issue             Issue               @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  requestedBy       User?               @relation("ReplacementRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy        User?               @relation("ReplacementReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  faultyDevice      Device?             @relation("ReplacementFaultyDevice", fields: [faultyDeviceId], references: [id], onDelete: Restrict)
+  replacementDevice Device?             @relation("ReplacementSpareDevice", fields: [replacementDeviceId], references: [id], onDelete: Restrict)
+  stockTransfer     StockTransfer?      @relation(fields: [stockTransferId], references: [id], onDelete: Restrict)
+  newInstallation   DeviceInstallation? @relation("ReplacementNewInstallation", fields: [newInstallationId], references: [id], onDelete: Restrict)
 
   @@index([issueId, status])
   @@index([status])
@@ -406,7 +731,7 @@ model DailyStatusLog {
   notes          String?     @db.Text
   createdAt      DateTime    @default(now()) @map("created_at")
 
-  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Restrict)
   loggedBy User?  @relation("DailyLogLoggedBy", fields: [loggedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([deviceId, logDate])
@@ -422,10 +747,14 @@ model Technician {
   userId         String   @unique @map("user_id") @db.Char(36)
   specialization String?  @db.VarChar(100)
   createdAt      DateTime @default(now()) @map("created_at")
+  employeeCode   String?  @map("employee_code") @db.VarChar(40)
+  isAvailable    Boolean  @default(true) @map("is_available")
 
-  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignments TechnicianAssignment[]
-  issues      Issue[]
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments   TechnicianAssignment[]
+  issues        Issue[]
+  installations DeviceInstallation[]
+  serviceVisits ServiceVisit[]
 
   @@map("technicians")
 }
@@ -466,6 +795,10 @@ model User {
   accountStatus AccountStatus @default(invited) @map("account_status")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
+  // v2: the matching FBOS Identity user. Fixly users stay as a mapping layer until Phase 6.
+  fbosUserId    String?       @unique @map("fbos_user_id") @db.Char(36)
+  phone         String?       @db.VarChar(40)
+  lastLoginAt   DateTime?     @map("last_login_at")
 
   company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -515,4 +848,565 @@ model DeviceToken {
 
   @@index([userId])
   @@map("device_tokens")
+}
+
+// ===========================================================================
+// v2 — catalog, procurement and warranty (diagram 03)
+// User references in v2 tables (`*_user_id`) hold FBOS Identity user ids:
+// plain UUID columns, no foreign key (integration plan §6 change 3).
+// ===========================================================================
+
+model DeviceModel {
+  id                    String   @id @default(uuid()) @db.Char(36)
+  organizationId        String?  @map("organization_id") @db.Char(36)
+  categoryId            String?  @map("category_id") @db.Char(36)
+  productTypeId         String?  @map("product_type_id") @db.Char(36)
+  hardwareTypeId        String?  @map("hardware_type_id") @db.Char(36)
+  name                  String   @db.VarChar(160)
+  manufacturer          String   @default("Unknown") @db.VarChar(120)
+  modelNumber           String   @map("model_number") @db.VarChar(120)
+  defaultWarrantyMonths Int      @default(12) @map("default_warranty_months")
+  defaultUnitPrice      Decimal? @map("default_unit_price") @db.Decimal(12, 2)
+  taxPercent            Decimal? @map("tax_percent") @db.Decimal(5, 2)
+  hsnSac                String?  @map("hsn_sac") @db.VarChar(20)
+  storesData            Boolean  @default(false) @map("stores_data") // needs a data wipe before disposal
+  specJson              Json?    @map("spec_json")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  category      ProductCategory?    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  productType   ProductType?        @relation(fields: [productTypeId], references: [id], onDelete: Restrict)
+  hardwareType  HardwareType?       @relation(fields: [hardwareTypeId], references: [id], onDelete: Restrict)
+  devices       Device[]
+  purchaseItems PurchaseOrderItem[]
+
+  @@unique([manufacturer, modelNumber])
+  @@index([productTypeId])
+  @@map("device_models")
+}
+
+model Vendor {
+  id             String     @id @default(uuid()) @db.Char(36)
+  organizationId String?    @map("organization_id") @db.Char(36)
+  name           String     @db.VarChar(160)
+  vendorType     VendorType @default(distributor) @map("vendor_type")
+  contactName    String?    @map("contact_name") @db.VarChar(160)
+  email          String?    @db.VarChar(200)
+  phone          String?    @db.VarChar(40)
+  gstNumber      String?    @map("gst_number") @db.VarChar(20)
+  address        String?    @db.Text
+  isActive       Boolean    @default(true) @map("is_active")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  purchaseOrders PurchaseOrder[]
+  devices        Device[]
+  warranties     Warranty[]
+  stockLocations StockLocation[]
+  repairOrders   RepairOrder[]
+
+  @@index([organizationId])
+  @@map("vendors")
+}
+
+model PurchaseOrder {
+  id                String              @id @default(uuid()) @db.Char(36)
+  organizationId    String?             @map("organization_id") @db.Char(36)
+  poNumber          String              @unique @map("po_number") @db.VarChar(30)
+  vendorId          String              @map("vendor_id") @db.Char(36)
+  status            PurchaseOrderStatus @default(draft)
+  orderDate         DateTime?           @map("order_date") @db.Date
+  expectedDate      DateTime?           @map("expected_date") @db.Date
+  currency          String              @default("INR") @db.Char(3)
+  subtotal          Decimal             @default(0) @db.Decimal(14, 2)
+  taxTotal          Decimal             @default(0) @map("tax_total") @db.Decimal(14, 2)
+  totalAmount       Decimal             @default(0) @map("total_amount") @db.Decimal(14, 2)
+  notes             String?             @db.Text
+  createdByUserId   String?             @map("created_by_user_id") @db.Char(36)
+  approvedByUserId  String?             @map("approved_by_user_id") @db.Char(36)
+  approvedAt        DateTime?           @map("approved_at")
+  approvalRequestId String?             @map("approval_request_id") @db.Char(36)
+  version           Int                 @default(1)
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  vendor   Vendor              @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+
+  @@index([organizationId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String   @id @default(uuid()) @db.Char(36)
+  purchaseOrderId  String   @map("purchase_order_id") @db.Char(36)
+  deviceModelId    String   @map("device_model_id") @db.Char(36)
+  quantityOrdered  Int      @map("quantity_ordered")
+  quantityReceived Int      @default(0) @map("quantity_received")
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(12, 2)
+  taxPercent       Decimal  @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  lineTotal        Decimal  @map("line_total") @db.Decimal(14, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  deviceModel   DeviceModel        @relation(fields: [deviceModelId], references: [id], onDelete: Restrict)
+  receiptItems  GoodsReceiptItem[]
+  devices       Device[]
+
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id                  String             @id @default(uuid()) @db.Char(36)
+  organizationId      String?            @map("organization_id") @db.Char(36)
+  grnNumber           String             @unique @map("grn_number") @db.VarChar(30)
+  purchaseOrderId     String             @map("purchase_order_id") @db.Char(36)
+  receivingLocationId String             @map("receiving_location_id") @db.Char(36)
+  vendorInvoiceNo     String?            @map("vendor_invoice_no") @db.VarChar(60)
+  deliveryChallanNo   String?            @map("delivery_challan_no") @db.VarChar(60)
+  status              GoodsReceiptStatus
+  receivedAt          DateTime           @default(now()) @map("received_at")
+  receivedByUserId    String?            @map("received_by_user_id") @db.Char(36)
+  notes               String?            @db.Text
+  createdAt           DateTime           @default(now()) @map("created_at")
+
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  receivingLocation StockLocation      @relation(fields: [receivingLocationId], references: [id], onDelete: Restrict)
+  items             GoodsReceiptItem[]
+  devices           Device[]
+
+  @@index([purchaseOrderId])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id                  String  @id @default(uuid()) @db.Char(36)
+  goodsReceiptId      String  @map("goods_receipt_id") @db.Char(36)
+  purchaseOrderItemId String  @map("purchase_order_item_id") @db.Char(36)
+  quantityReceived    Int     @map("quantity_received")
+  quantityAccepted    Int     @map("quantity_accepted")
+  quantityRejected    Int     @default(0) @map("quantity_rejected")
+  rejectionReason     String? @map("rejection_reason") @db.VarChar(255)
+
+  goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+
+  @@index([goodsReceiptId])
+  @@map("goods_receipt_items")
+}
+
+model Warranty {
+  id             String         @id @default(uuid()) @db.Char(36)
+  organizationId String?        @map("organization_id") @db.Char(36)
+  deviceId       String         @map("device_id") @db.Char(36)
+  vendorId       String?        @map("vendor_id") @db.Char(36)
+  warrantyType   WarrantyType   @default(manufacturer) @map("warranty_type")
+  coverage       String?        @db.VarChar(255)
+  startBasis     String         @default("grn_date") @map("start_basis") @db.VarChar(20) // grn_date | install_date
+  startDate      DateTime       @map("start_date") @db.Date
+  endDate        DateTime       @map("end_date") @db.Date
+  status         WarrantyStatus @default(active)
+  contractId     String?        @map("contract_id") @db.Char(36) // FBOS Revenue contract (AMC terms)
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  device       Device        @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  vendor       Vendor?       @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  issues       Issue[]
+  repairOrders RepairOrder[]
+
+  @@index([deviceId, status])
+  @@index([status, endDate])
+  @@map("warranties")
+}
+
+// ===========================================================================
+// v2 — stock locations, transfers, allocation (diagram 04)
+// ===========================================================================
+
+model StockLocation {
+  id             String            @id @default(uuid()) @db.Char(36)
+  organizationId String?           @map("organization_id") @db.Char(36)
+  code           String            @unique @db.VarChar(40)
+  name           String            @db.VarChar(160)
+  locationType   StockLocationType @map("location_type")
+  companyId      String?           @map("company_id") @db.Char(36)
+  clientId       String?           @map("client_id") @db.Char(36)
+  vendorId       String?           @map("vendor_id") @db.Char(36)
+  address        String?           @db.Text
+  isActive       Boolean           @default(true) @map("is_active")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  company       Company?        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  client        Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  vendor        Vendor?         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  devices       Device[]
+  transfersOut  StockTransfer[] @relation("TransferFrom")
+  transfersIn   StockTransfer[] @relation("TransferTo")
+  goodsReceipts GoodsReceipt[]
+
+  @@index([locationType])
+  @@index([companyId])
+  @@index([clientId])
+  @@map("stock_locations")
+}
+
+model StockTransfer {
+  id                 String              @id @default(uuid()) @db.Char(36)
+  organizationId     String?             @map("organization_id") @db.Char(36)
+  transferNumber     String              @unique @map("transfer_number") @db.VarChar(30)
+  transferType       StockTransferType   @map("transfer_type")
+  fromLocationId     String              @map("from_location_id") @db.Char(36)
+  toLocationId       String              @map("to_location_id") @db.Char(36)
+  fromCompanyId      String?             @map("from_company_id") @db.Char(36)
+  toCompanyId        String?             @map("to_company_id") @db.Char(36)
+  fromClientId       String?             @map("from_client_id") @db.Char(36)
+  toClientId         String?             @map("to_client_id") @db.Char(36)
+  status             StockTransferStatus @default(draft)
+  requestedByUserId  String?             @map("requested_by_user_id") @db.Char(36)
+  approvedByUserId   String?             @map("approved_by_user_id") @db.Char(36)
+  dispatchedByUserId String?             @map("dispatched_by_user_id") @db.Char(36)
+  receivedByUserId   String?             @map("received_by_user_id") @db.Char(36)
+  approvedAt         DateTime?           @map("approved_at")
+  dispatchedAt       DateTime?           @map("dispatched_at")
+  receivedAt         DateTime?           @map("received_at")
+  challanNo          String?             @map("challan_no") @db.VarChar(60)
+  carrier            String?             @db.VarChar(120)
+  trackingNumber     String?             @map("tracking_number") @db.VarChar(120)
+  notes              String?             @db.Text
+  version            Int                 @default(1)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  fromLocation StockLocation        @relation("TransferFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation   StockLocation        @relation("TransferTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  items        StockTransferItem[]
+  allocations  DeviceAllocation[]
+  replacements ReplacementRequest[]
+  repairsOut   RepairOrder[]        @relation("RepairOutbound")
+  repairsBack  RepairOrder[]        @relation("RepairReturn")
+
+  @@index([organizationId, status])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String             @id @default(uuid()) @db.Char(36)
+  stockTransferId String             @map("stock_transfer_id") @db.Char(36)
+  deviceId        String             @map("device_id") @db.Char(36)
+  conditionOut    DeviceCondition?   @map("condition_out")
+  conditionIn     DeviceCondition?   @map("condition_in")
+  itemStatus      TransferItemStatus @default(pending) @map("item_status")
+  notes           String?            @db.Text
+  /// Generated in SQL (1 while pending or in transit, else NULL); never written.
+  /// UNIQUE(device_id, open_flag) = one open transfer per device (design doc §8 rule 4).
+  openFlag        Int?               @map("open_flag") @db.TinyInt
+
+  stockTransfer StockTransfer @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  device        Device        @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@unique([deviceId, openFlag])
+  @@index([stockTransferId])
+  @@map("stock_transfer_items")
+}
+
+model DeviceAllocation {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String?        @map("organization_id") @db.Char(36)
+  deviceId        String         @map("device_id") @db.Char(36)
+  companyId       String?        @map("company_id") @db.Char(36)
+  clientId        String?        @map("client_id") @db.Char(36)
+  allocationType  AllocationType @default(custody) @map("allocation_type")
+  stockTransferId String?        @map("stock_transfer_id") @db.Char(36)
+  allocatedAt     DateTime       @default(now()) @map("allocated_at")
+  releasedAt      DateTime?      @map("released_at")
+  /// Generated in SQL (1 while released_at IS NULL); never written. One active allocation per device.
+  activeFlag      Int?           @map("active_flag") @db.TinyInt
+
+  device        Device         @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  stockTransfer StockTransfer? @relation(fields: [stockTransferId], references: [id], onDelete: Restrict)
+
+  @@unique([deviceId, activeFlag])
+  @@index([companyId])
+  @@index([clientId])
+  @@map("device_allocations")
+}
+
+// ===========================================================================
+// v2 — installation, lifecycle log, documents, disposal (diagram 05)
+// ===========================================================================
+
+model DeviceInstallation {
+  id                      String             @id @default(uuid()) @db.Char(36)
+  organizationId          String?            @map("organization_id") @db.Char(36)
+  deviceId                String             @map("device_id") @db.Char(36)
+  zoneId                  String             @map("zone_id") @db.Char(36)
+  clientId                String?            @map("client_id") @db.Char(36)
+  positionLabel           String?            @map("position_label") @db.VarChar(200)
+  latitude                Decimal?           @db.Decimal(10, 8)
+  longitude               Decimal?           @db.Decimal(11, 8)
+  installationType        InstallationType   @default(new_install) @map("installation_type")
+  status                  InstallationStatus @default(active)
+  installedAt             DateTime           @default(now()) @map("installed_at")
+  installedByTechnicianId String?            @map("installed_by_technician_id") @db.Char(36)
+  installedByUserId       String?            @map("installed_by_user_id") @db.Char(36)
+  replacesInstallationId  String?            @map("replaces_installation_id") @db.Char(36)
+  removedAt               DateTime?          @map("removed_at")
+  removedByUserId         String?            @map("removed_by_user_id") @db.Char(36)
+  removalReason           String?            @map("removal_reason") @db.VarChar(255)
+  photos                  Json?
+  workUnitId              String?            @map("work_unit_id") @db.Char(36) // FBOS Delivery project
+  taskId                  String?            @map("task_id") @db.Char(36) // FBOS Delivery task
+  notes                   String?            @db.Text
+  /// Generated in SQL (1 while status = 'active'); never written. One active installation per device.
+  activeFlag              Int?               @map("active_flag") @db.TinyInt
+
+  device       Device               @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  zone         Zone                 @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  installedBy  Technician?          @relation(fields: [installedByTechnicianId], references: [id], onDelete: Restrict)
+  replaces     DeviceInstallation?  @relation("InstallationReplaces", fields: [replacesInstallationId], references: [id], onDelete: Restrict)
+  replacedBy   DeviceInstallation[] @relation("InstallationReplaces")
+  issues       Issue[]
+  replacements ReplacementRequest[] @relation("ReplacementNewInstallation")
+
+  @@unique([deviceId, activeFlag])
+  @@index([zoneId, status])
+  @@map("device_installations")
+}
+
+// Append-only: one row per change of state, place or custody, written in the same
+// transaction as the change (design doc §8 rule 5). Never updated or deleted.
+model DeviceLifecycleEvent {
+  id             String          @id @default(uuid()) @db.Char(36)
+  organizationId String?         @map("organization_id") @db.Char(36)
+  deviceId       String          @map("device_id") @db.Char(36)
+  eventType      String          @map("event_type") @db.VarChar(40)
+  fromState      LifecycleState? @map("from_state")
+  toState        LifecycleState? @map("to_state")
+  fromLocationId String?         @map("from_location_id") @db.Char(36)
+  toLocationId   String?         @map("to_location_id") @db.Char(36)
+  fromZoneId     String?         @map("from_zone_id") @db.Char(36)
+  toZoneId       String?         @map("to_zone_id") @db.Char(36)
+  companyId      String?         @map("company_id") @db.Char(36)
+  clientId       String?         @map("client_id") @db.Char(36)
+  referenceType  String?         @map("reference_type") @db.VarChar(40)
+  referenceId    String?         @map("reference_id") @db.Char(36)
+  actorUserId    String?         @map("actor_user_id") @db.Char(36) // FBOS user (v2 API)
+  legacyUserId   String?         @map("legacy_user_id") @db.Char(36) // Fixly user (legacy API)
+  notes          String?         @db.Text
+  occurredAt     DateTime        @default(now()) @map("occurred_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([deviceId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@map("device_lifecycle_events")
+}
+
+model DeviceDocument {
+  id               String        @id @default(uuid()) @db.Char(36)
+  deviceId         String        @map("device_id") @db.Char(36)
+  docType          DeviceDocType @default(other) @map("doc_type")
+  documentId       String?       @map("document_id") @db.Char(36) // FBOS Documents
+  fileUrl          String?       @map("file_url") @db.Text // only for legacy uploads
+  title            String?       @db.VarChar(200)
+  uploadedByUserId String?       @map("uploaded_by_user_id") @db.Char(36)
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([deviceId])
+  @@map("device_documents")
+}
+
+model DeviceDisposal {
+  id                    String         @id @default(uuid()) @db.Char(36)
+  organizationId        String?        @map("organization_id") @db.Char(36)
+  deviceId              String         @map("device_id") @db.Char(36)
+  disposalMethod        DisposalMethod @map("disposal_method")
+  status                DisposalStatus @default(pending)
+  reason                String?        @db.Text
+  dataWiped             Boolean        @default(false) @map("data_wiped")
+  certificateDocumentId String?        @map("certificate_document_id") @db.Char(36)
+  recoveredValue        Decimal?       @map("recovered_value") @db.Decimal(12, 2)
+  requestedByUserId     String?        @map("requested_by_user_id") @db.Char(36)
+  approvedByUserId      String?        @map("approved_by_user_id") @db.Char(36)
+  approvedAt            DateTime?      @map("approved_at")
+  disposedAt            DateTime?      @map("disposed_at")
+  approvalRequestId     String?        @map("approval_request_id") @db.Char(36)
+  notes                 String?        @db.Text
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([deviceId])
+  @@index([status])
+  @@map("device_disposals")
+}
+
+// ===========================================================================
+// v2 — visits and repair (diagram 06)
+// ===========================================================================
+
+model ServiceVisit {
+  id                  String        @id @default(uuid()) @db.Char(36)
+  organizationId      String?       @map("organization_id") @db.Char(36)
+  issueId             String?       @map("issue_id") @db.Char(36)
+  technicianId        String?       @map("technician_id") @db.Char(36)
+  visitType           VisitType     @default(corrective) @map("visit_type")
+  status              VisitStatus   @default(scheduled)
+  scheduledAt         DateTime?     @map("scheduled_at")
+  checkInAt           DateTime?     @map("check_in_at")
+  checkOutAt          DateTime?     @map("check_out_at")
+  checkInLat          Decimal?      @map("check_in_lat") @db.Decimal(10, 8)
+  checkInLng          Decimal?      @map("check_in_lng") @db.Decimal(11, 8)
+  checkOutLat         Decimal?      @map("check_out_lat") @db.Decimal(10, 8)
+  checkOutLng         Decimal?      @map("check_out_lng") @db.Decimal(11, 8)
+  findings            String?       @db.Text
+  outcome             VisitOutcome?
+  signatoryName       String?       @map("signatory_name") @db.VarChar(160)
+  signatureDocumentId String?       @map("signature_document_id") @db.Char(36)
+  createdByUserId     String?       @map("created_by_user_id") @db.Char(36)
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  issue      Issue?      @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  technician Technician? @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+
+  @@index([issueId])
+  @@index([technicianId, status])
+  @@map("service_visits")
+}
+
+model RepairOrder {
+  id                 String            @id @default(uuid()) @db.Char(36)
+  organizationId     String?           @map("organization_id") @db.Char(36)
+  repairNumber       String            @unique @map("repair_number") @db.VarChar(30)
+  deviceId           String            @map("device_id") @db.Char(36)
+  issueId            String?           @map("issue_id") @db.Char(36)
+  warrantyId         String?           @map("warranty_id") @db.Char(36)
+  vendorId           String?           @map("vendor_id") @db.Char(36)
+  repairType         RepairType        @map("repair_type")
+  isWarrantyClaim    Boolean           @default(false) @map("is_warranty_claim")
+  rmaNumber          String?           @map("rma_number") @db.VarChar(60)
+  status             RepairOrderStatus @default(requested)
+  outcome            String?           @db.VarChar(30) // repaired | replaced_by_vendor | beyond_repair
+  costEstimate       Decimal?          @map("cost_estimate") @db.Decimal(12, 2)
+  finalCost          Decimal?          @map("final_cost") @db.Decimal(12, 2)
+  currency           String            @default("INR") @db.Char(3)
+  costBorneBy        CostBorneBy?      @map("cost_borne_by")
+  billable           Boolean           @default(false)
+  invoiceId          String?           @map("invoice_id") @db.Char(36) // FBOS Revenue invoice
+  outboundTransferId String?           @map("outbound_transfer_id") @db.Char(36)
+  returnTransferId   String?           @map("return_transfer_id") @db.Char(36)
+  returnLocationId   String?           @map("return_location_id") @db.Char(36)
+  requestedByUserId  String?           @map("requested_by_user_id") @db.Char(36)
+  approvedByUserId   String?           @map("approved_by_user_id") @db.Char(36)
+  approvalRequestId  String?           @map("approval_request_id") @db.Char(36)
+  approvedAt         DateTime?         @map("approved_at")
+  sentAt             DateTime?         @map("sent_at")
+  returnedAt         DateTime?         @map("returned_at")
+  closedAt           DateTime?         @map("closed_at")
+  notes              String?           @db.Text
+  version            Int               @default(1)
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  device           Device         @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  issue            Issue?         @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  warranty         Warranty?      @relation(fields: [warrantyId], references: [id], onDelete: Restrict)
+  vendor           Vendor?        @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  outboundTransfer StockTransfer? @relation("RepairOutbound", fields: [outboundTransferId], references: [id], onDelete: Restrict)
+  returnTransfer   StockTransfer? @relation("RepairReturn", fields: [returnTransferId], references: [id], onDelete: Restrict)
+  parts            RepairPart[]
+
+  @@index([deviceId])
+  @@index([status])
+  @@map("repair_orders")
+}
+
+model RepairPart {
+  id                String   @id @default(uuid()) @db.Char(36)
+  repairOrderId     String   @map("repair_order_id") @db.Char(36)
+  partName          String   @map("part_name") @db.VarChar(160)
+  quantity          Int      @default(1)
+  unitCost          Decimal? @map("unit_cost") @db.Decimal(12, 2)
+  coveredByWarranty Boolean  @default(false) @map("covered_by_warranty")
+
+  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+
+  @@index([repairOrderId])
+  @@map("repair_parts")
+}
+
+// ===========================================================================
+// v2 — platform tables (integration plan §6 change 5)
+// ===========================================================================
+
+// Written in the same transaction as the change it reports; a worker delivers
+// it (today only to FBOS Communication) and retries with backoff.
+model Outbox {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String?      @map("organization_id") @db.Char(36)
+  eventType      String       @map("event_type") @db.VarChar(60)
+  aggregateType  String       @map("aggregate_type") @db.VarChar(40)
+  aggregateId    String       @map("aggregate_id") @db.Char(36)
+  destination    String       @db.VarChar(40)
+  payload        Json
+  status         OutboxStatus @default(pending)
+  attempts       Int          @default(0)
+  nextAttemptAt  DateTime     @default(now()) @map("next_attempt_at")
+  lastError      String?      @map("last_error") @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  deliveredAt    DateTime?    @map("delivered_at")
+
+  @@index([status, nextAttemptAt])
+  @@map("outbox")
+}
+
+// Replay protection for `Idempotency-Key` on GRN, dispatch and repair dispatch.
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Char(36)
+  scope          String   @db.VarChar(200) // method + route + caller
+  key            String   @db.VarChar(120)
+  requestHash    String   @map("request_hash") @db.Char(64)
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([scope, key])
+  @@map("idempotency_keys")
+}
+
+// Yearly counters for document numbers (PO-2026-0001, GRN-…, TRF-…, RO-…, ISS-…).
+// Device asset codes keep using `product_categories.last_seq` until Phase 6.
+model DocumentSequence {
+  prefix  String @db.VarChar(10)
+  year    Int
+  lastSeq Int    @default(0) @map("last_seq")
+
+  @@id([prefix, year])
+  @@map("document_sequences")
+}
+
+// Audit of every mapping between a Fixly row and an FBOS record (users, customers, units).
+model FbosLink {
+  id         String   @id @default(uuid()) @db.Char(36)
+  entityType String   @map("entity_type") @db.VarChar(40) // user | company | client
+  entityId   String   @map("entity_id") @db.Char(36)
+  fbosType   String   @map("fbos_type") @db.VarChar(40) // identity_user | revenue_client | org_unit
+  fbosId     String   @map("fbos_id") @db.Char(36)
+  source     String?  @db.VarChar(60) // script or route that wrote it
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([entityType, entityId, fbosType])
+  @@map("fbos_links")
 }

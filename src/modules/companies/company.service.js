@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
+import { removeEmptyStores } from '../inventory/domain/stores.js';
 
 export const companyService = {
   async list({ page, limit, search }) {
@@ -33,6 +34,18 @@ export const companyService = {
 
   async remove(id) {
     await this.getById(id);
+
+    const deviceCount = await prisma.device.count({
+      where: { OR: [{ companyId: id }, { ownerCompanyId: id }] },
+    });
+    if (deviceCount > 0) {
+      throw ApiError.conflict(
+        `This organization has ${deviceCount} device(s). Move or retire them before deleting it.`,
+        { deviceCount },
+        'COMPANY_HAS_DEVICES',
+      );
+    }
+    await removeEmptyStores({ companyId: id });
 
     // Delete all clients under this org (and their cascades: zones,
     // zone_assignments, client_verticals, technician_assignments).

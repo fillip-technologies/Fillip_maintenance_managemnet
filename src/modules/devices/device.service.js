@@ -8,6 +8,7 @@ import { OPEN_ISSUE_STATES as DEVICE_OCCUPYING_STATES } from '../../utils/issueS
 import { zoneService } from '../zones/zone.service.js';
 import { reserveCodes } from '../productCategories/productCategory.service.js';
 import { deviceScopeWhere, combine, zoneInScope, assertInScope } from '../../authz/scope.js';
+import { syncFromLegacy } from '../inventory/domain/deviceState.js';
 
 /** Manual device status transitions. `under_maintenance` and `faulty` are set
  * automatically by the issue / daily-log flows, not through this endpoint. */
@@ -122,7 +123,11 @@ export const deviceService = {
         'ZONE_HAS_CHILDREN',
       );
     }
-    return prisma.device.create({ data: { ...data, addedById: creatorId }, include: withZone });
+    return prisma.$transaction(async (tx) => {
+      const device = await tx.device.create({ data: { ...data, addedById: creatorId } });
+      await syncFromLegacy(tx, device.id, { legacyUserId: creatorId, eventType: 'registered' });
+      return tx.device.findUnique({ where: { id: device.id }, include: withZone });
+    });
   },
 
   /**
@@ -169,7 +174,7 @@ export const deviceService = {
 
     return prisma.$transaction(async (tx) => {
       const { codes } = await reserveCodes(tx, categoryId, 1);
-      return tx.device.create({
+      const device = await tx.device.create({
         data: {
           ...data,
           code: codes[0],
@@ -179,14 +184,18 @@ export const deviceService = {
           zoneId: zoneId ?? null,
           addedById: creatorId,
         },
-        include: withZone,
       });
+      await syncFromLegacy(tx, device.id, { legacyUserId: creatorId, eventType: 'registered' });
+      return tx.device.findUnique({ where: { id: device.id }, include: withZone });
     });
   },
 
   /** Deploy an in-stock unit into a zone (assign zone + activate). */
   async deploy(id, zoneId, user, scope) {
     const device = await this.getById(id, scope);
+    if (device.status === 'retired') {
+      throw ApiError.conflict('A retired device cannot be deployed', undefined, 'DEVICE_RETIRED');
+    }
     const zone = await prisma.zone.findUnique({
       where: { id: zoneId },
       select: { id: true, clientId: true, client: { select: { companyId: true } }, _count: { select: { children: true } } },
@@ -204,7 +213,11 @@ export const deviceService = {
       throw ApiError.badRequest('Zone belongs to a different organization than the unit');
     }
     const status = device.status === 'provisioned' ? 'active' : device.status;
-    return prisma.device.update({ where: { id }, data: { zoneId, status }, include: withZone });
+    return prisma.$transaction(async (tx) => {
+      await tx.device.update({ where: { id }, data: { zoneId, status } });
+      await syncFromLegacy(tx, id, { legacyUserId: user?.id, eventType: device.zoneId ? 'relocated' : 'installed' });
+      return tx.device.findUnique({ where: { id }, include: withZone });
+    });
   },
 
   async update(id, data, scope) {
@@ -226,13 +239,20 @@ export const deviceService = {
     });
   },
 
-  async setStatus(id, toStatus, scope) {
+  async setStatus(id, toStatus, scope, user) {
     const device = await this.getById(id, scope);
     const allowed = DEVICE_MANUAL_TRANSITIONS[device.status] ?? [];
     if (!allowed.includes(toStatus)) {
       throw ApiError.badRequest(`Illegal device transition: ${device.status} → ${toStatus}`);
     }
-    return prisma.device.update({ where: { id }, data: { status: toStatus }, include: withZone });
+    return prisma.$transaction(async (tx) => {
+      await tx.device.update({ where: { id }, data: { status: toStatus } });
+      await syncFromLegacy(tx, id, {
+        legacyUserId: user?.id,
+        eventType: toStatus === 'retired' ? 'retired' : 'status_changed',
+      });
+      return tx.device.findUnique({ where: { id }, include: withZone });
+    });
   },
 };
 
@@ -298,6 +318,7 @@ export async function reconcileDeviceStatus(tx, deviceId) {
 
   if (target !== device.status) {
     await tx.device.update({ where: { id: deviceId }, data: { status: target } });
+    await syncFromLegacy(tx, deviceId, { eventType: 'status_changed', notes: `Derived from issues and daily logs: ${target}` });
   }
   return target;
 }

@@ -22,7 +22,7 @@ export const deviceController = {
     sendSuccess(res, await deviceService.update(req.params.id, req.body, req.scope));
   }),
   setStatus: asyncHandler(async (req, res) => {
-    sendSuccess(res, await deviceService.setStatus(req.params.id, req.body.status, req.scope));
+    sendSuccess(res, await deviceService.setStatus(req.params.id, req.body.status, req.scope, req.user));
   }),
   uploadImage: asyncHandler(async (req, res) => {
     if (!req.file) throw ApiError.badRequest('No file provided');
