@@ -13,6 +13,7 @@ import { transfersRouter } from './routes/transfers.js';
 import { installationsRouter } from './routes/installations.js';
 import { serviceRouter } from './routes/service.js';
 import { reportsRouter } from './routes/reports.js';
+import { maintenanceRouter } from './routes/maintenance.js';
 
 /**
  * /api/inventory/v1: the FBOS-conformant inventory service (integration plan §7).
@@ -71,6 +72,7 @@ export function inventoryRouter() {
   router.use(installationsRouter);
   router.use(serviceRouter);
   router.use(reportsRouter);
+  router.use(maintenanceRouter);
 
   router.use((req, _res, next) => next(new InventoryError(404, 'NOT_FOUND', `No route ${req.method} ${req.path}`)));
   router.use(inventoryErrorHandler);

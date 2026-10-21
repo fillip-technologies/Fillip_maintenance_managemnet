@@ -1282,12 +1282,16 @@ model ServiceVisit {
   createdByUserId     String?       @map("created_by_user_id") @db.Char(36)
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
+  maintenancePlanId   String?       @map("maintenance_plan_id") @db.Char(36)
+  clientId            String?       @map("client_id") @db.Char(36) // the site, for visits without an issue
 
-  issue      Issue?      @relation(fields: [issueId], references: [id], onDelete: Restrict)
-  technician Technician? @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  issue           Issue?           @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  technician      Technician?      @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  maintenancePlan MaintenancePlan? @relation(fields: [maintenancePlanId], references: [id], onDelete: Restrict)
 
   @@index([issueId])
   @@index([technicianId, status])
+  @@index([maintenancePlanId])
   @@map("service_visits")
 }
 
@@ -1414,4 +1418,38 @@ model FbosLink {
 
   @@unique([entityType, entityId, fbosType])
   @@map("fbos_links")
+}
+
+// ===========================================================================
+// v2.1 — preventive maintenance (integration plan §6 change 9, Phase 5)
+// A plan covers a site (optionally one zone or one model) and generates a
+// preventive service visit every `frequency_days`, `lead_days` ahead.
+// ===========================================================================
+
+model MaintenancePlan {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String?   @map("organization_id") @db.Char(36)
+  name            String    @db.VarChar(160)
+  companyId       String?   @map("company_id") @db.Char(36)
+  clientId        String    @map("client_id") @db.Char(36)
+  zoneId          String?   @map("zone_id") @db.Char(36)
+  deviceModelId   String?   @map("device_model_id") @db.Char(36)
+  warrantyId      String?   @map("warranty_id") @db.Char(36) // the AMC it delivers, when there is one
+  contractId      String?   @map("contract_id") @db.Char(36) // FBOS Revenue contract
+  frequencyDays   Int       @map("frequency_days")
+  leadDays        Int       @default(7) @map("lead_days")
+  nextDueAt       DateTime  @map("next_due_at") @db.Date
+  lastGeneratedAt DateTime? @map("last_generated_at")
+  technicianId    String?   @map("technician_id") @db.Char(36)
+  isActive        Boolean   @default(true) @map("is_active")
+  notes           String?   @db.Text
+  createdByUserId String?   @map("created_by_user_id") @db.Char(36)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  visits ServiceVisit[]
+
+  @@index([isActive, nextDueAt])
+  @@index([clientId])
+  @@map("maintenance_plans")
 }

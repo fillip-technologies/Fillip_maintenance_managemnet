@@ -116,7 +116,9 @@ export function startOutboxWorker({ intervalMs = 15_000 } = {}) {
       const today = new Date().toISOString().slice(0, 10);
       if (lastNoticeDay !== today) {
         const { queueWarrantyNotices } = await import('./warrantyNotices.js');
+        const { generateDueVisits } = await import('./maintenance.js');
         await queueWarrantyNotices();
+        await generateDueVisits();
         lastNoticeDay = today;
       }
       await deliverPending();
