@@ -1,3 +1,4 @@
+import { withTx } from '../db.js';
 import { prisma } from '../../../lib/prisma.js';
 import { changeDeviceState } from '../domain/deviceState.js';
 import { technicianFor } from '../auth/access.js';
@@ -26,7 +27,7 @@ export async function installDevice(access, actor, body, version) {
     throw unprocessable('ZONE_OF_ANOTHER_SITE', 'The zone is at another site than the store the device is in');
   }
   const technicianId = body.installed_by_technician_id ?? (await technicianFor(actor.userId));
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const { installation } = await changeDeviceState(tx, device.id, {
       toState: 'installed',
       zoneId: zone.id,
@@ -60,7 +61,7 @@ export async function removeInstallation(access, actor, installationId, body) {
   const store = await prisma.stockLocation.findFirst({ where: { locationType: 'client_store', clientId: inst.clientId, isActive: true } });
   if (!store) throw unprocessable('SITE_HAS_NO_STORE', 'The site has no store to take the device back into');
   const keepsFault = ['faulty', 'pending_replacement'].includes(device.lifecycleState);
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     await changeDeviceState(tx, device.id, {
       toState: keepsFault ? device.lifecycleState : 'in_client_stock',
       zoneId: null,

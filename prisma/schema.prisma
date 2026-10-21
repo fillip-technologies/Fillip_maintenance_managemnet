@@ -614,21 +614,22 @@ model Issue {
   closedAt             DateTime?     @map("closed_at")
 
   // --- v2: snapshots of where the device was, warranty check at raise time, SLA.
-  organizationId    String?              @map("organization_id") @db.Char(36)
-  issueNumber       String?              @unique @map("issue_number") @db.VarChar(30)
-  installationId    String?              @map("installation_id") @db.Char(36)
-  zoneId            String?              @map("zone_id") @db.Char(36)
-  clientId          String?              @map("client_id") @db.Char(36)
-  companyId         String?              @map("company_id") @db.Char(36)
-  raisedVia         String?              @map("raised_via") @db.VarChar(20) // manual | daily_log | alert | mobile
-  warrantyId        String?              @map("warranty_id") @db.Char(36)
-  warrantyStatus    IssueWarrantyStatus? @map("warranty_status")
-  diagnosisSummary  String?              @map("diagnosis_summary") @db.Text
-  resolutionType    String?              @map("resolution_type") @db.VarChar(30) // fixed_onsite | replaced | repaired | ...
-  slaDueAt          DateTime?            @map("sla_due_at")
-  slaPolicyId       String?              @map("sla_policy_id") @db.Char(36)
-  approvalRequestId String?              @map("approval_request_id") @db.Char(36)
-  version           Int                  @default(1)
+  organizationId     String?              @map("organization_id") @db.Char(36)
+  issueNumber        String?              @unique @map("issue_number") @db.VarChar(30)
+  installationId     String?              @map("installation_id") @db.Char(36)
+  zoneId             String?              @map("zone_id") @db.Char(36)
+  clientId           String?              @map("client_id") @db.Char(36)
+  companyId          String?              @map("company_id") @db.Char(36)
+  raisedVia          String?              @map("raised_via") @db.VarChar(20) // manual | daily_log | alert | mobile
+  warrantyId         String?              @map("warranty_id") @db.Char(36)
+  warrantyStatus     IssueWarrantyStatus? @map("warranty_status")
+  diagnosisSummary   String?              @map("diagnosis_summary") @db.Text
+  resolutionType     String?              @map("resolution_type") @db.VarChar(30) // fixed_onsite | replaced | repaired | ...
+  slaDueAt           DateTime?            @map("sla_due_at")
+  slaPolicyId        String?              @map("sla_policy_id") @db.Char(36)
+  approvalRequestId  String?              @map("approval_request_id") @db.Char(36)
+  version            Int                  @default(1)
+  raisedByFbosUserId String?              @map("raised_by_fbos_user_id") @db.Char(36) // raised through the v2 API
 
   // Restrict, not Cascade: a device's issues are its history (design doc §8 rule 14).
   device              Device               @relation(fields: [deviceId], references: [id], onDelete: Restrict)
@@ -649,15 +650,16 @@ model Issue {
 }
 
 model IssueStatusHistory {
-  id              String       @id @default(uuid()) @db.Char(36)
-  issueId         String       @map("issue_id") @db.Char(36)
-  fromStatus      IssueStatus? @map("from_status")
-  toStatus        IssueStatus  @map("to_status")
-  changedByUserId String?      @map("changed_by_user_id") @db.Char(36)
-  changedAt       DateTime     @default(now()) @map("changed_at")
-  notes           String?      @db.Text
-  latitude        Decimal?     @db.Decimal(10, 8)
-  longitude       Decimal?     @db.Decimal(11, 8)
+  id                  String       @id @default(uuid()) @db.Char(36)
+  issueId             String       @map("issue_id") @db.Char(36)
+  fromStatus          IssueStatus? @map("from_status")
+  toStatus            IssueStatus  @map("to_status")
+  changedByUserId     String?      @map("changed_by_user_id") @db.Char(36)
+  changedAt           DateTime     @default(now()) @map("changed_at")
+  notes               String?      @db.Text
+  latitude            Decimal?     @db.Decimal(10, 8)
+  longitude           Decimal?     @db.Decimal(11, 8)
+  changedByFbosUserId String?      @map("changed_by_fbos_user_id") @db.Char(36) // changed through the v2 API
 
   issue     Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
   changedBy User? @relation("IssueStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
@@ -692,17 +694,19 @@ model ReplacementRequest {
   completedAt       DateTime?                @map("completed_at")
 
   // --- v2: real device links instead of the spare's copied name/code (deprecated).
-  organizationId       String?      @map("organization_id") @db.Char(36)
-  faultyDeviceId       String?      @map("faulty_device_id") @db.Char(36)
-  replacementDeviceId  String?      @map("replacement_device_id") @db.Char(36)
-  warrantyId           String?      @map("warranty_id") @db.Char(36)
-  replacementBasis     String?      @map("replacement_basis") @db.VarChar(20) // warranty | paid | goodwill
-  sourceLocationId     String?      @map("source_location_id") @db.Char(36)
-  oldDeviceDisposition String?      @map("old_device_disposition") @db.VarChar(20) // to_repair | vendor_rma | return_to_stock | scrap
-  costBorneBy          CostBorneBy? @map("cost_borne_by")
-  costAmount           Decimal?     @map("cost_amount") @db.Decimal(12, 2)
-  stockTransferId      String?      @map("stock_transfer_id") @db.Char(36)
-  newInstallationId    String?      @map("new_installation_id") @db.Char(36)
+  organizationId        String?      @map("organization_id") @db.Char(36)
+  faultyDeviceId        String?      @map("faulty_device_id") @db.Char(36)
+  replacementDeviceId   String?      @map("replacement_device_id") @db.Char(36)
+  warrantyId            String?      @map("warranty_id") @db.Char(36)
+  replacementBasis      String?      @map("replacement_basis") @db.VarChar(20) // warranty | paid | goodwill
+  sourceLocationId      String?      @map("source_location_id") @db.Char(36)
+  oldDeviceDisposition  String?      @map("old_device_disposition") @db.VarChar(20) // to_repair | vendor_rma | return_to_stock | scrap
+  costBorneBy           CostBorneBy? @map("cost_borne_by")
+  costAmount            Decimal?     @map("cost_amount") @db.Decimal(12, 2)
+  stockTransferId       String?      @map("stock_transfer_id") @db.Char(36)
+  newInstallationId     String?      @map("new_installation_id") @db.Char(36)
+  requestedByFbosUserId String?      @map("requested_by_fbos_user_id") @db.Char(36)
+  reviewedByFbosUserId  String?      @map("reviewed_by_fbos_user_id") @db.Char(36)
 
   issue             Issue               @relation(fields: [issueId], references: [id], onDelete: Cascade)
   requestedBy       User?               @relation("ReplacementRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
@@ -1011,6 +1015,7 @@ model Warranty {
   status         WarrantyStatus @default(active)
   contractId     String?        @map("contract_id") @db.Char(36) // FBOS Revenue contract (AMC terms)
   notes          String?        @db.Text
+  lastNoticeDays Int?           @map("last_notice_days") // smallest "expires in N days" notice already sent
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 

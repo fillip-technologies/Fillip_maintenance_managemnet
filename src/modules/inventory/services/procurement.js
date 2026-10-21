@@ -1,3 +1,4 @@
+import { withTx } from '../db.js';
 import { prisma } from '../../../lib/prisma.js';
 import { env } from '../../../config/env.js';
 import { reserveCodes } from '../../productCategories/productCategory.service.js';
@@ -40,7 +41,7 @@ async function assertModels(tx, items) {
 }
 
 export async function createPurchaseOrder(actor, body) {
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const vendor = await tx.vendor.findFirst({ where: { id: body.vendor_id, isActive: true } });
     if (!vendor) throw unprocessable('VENDOR_NOT_FOUND', 'The vendor does not exist or is inactive');
     await assertModels(tx, body.items);
@@ -80,7 +81,7 @@ async function poForUpdate(tx, id) {
 }
 
 export async function updatePurchaseOrder(actor, id, version, body) {
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const po = await poForUpdate(tx, id);
     assertVersion(po, version);
     if (po.status !== 'draft') throw conflict('PURCHASE_ORDER_NOT_DRAFT', 'Only a draft purchase order can be changed');
@@ -121,7 +122,7 @@ const PO_MOVES = {
 };
 
 export async function movePurchaseOrder(actor, id, version, move) {
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const po = await poForUpdate(tx, id);
     assertVersion(po, version);
     const rule = PO_MOVES[move];
@@ -149,7 +150,7 @@ export async function movePurchaseOrder(actor, id, version, move) {
  * updates the order's received quantities, in one transaction.
  */
 export async function receiveGoods(actor, body) {
-  return prisma.$transaction(
+  return withTx(
     async (tx) => {
       const po = await poForUpdate(tx, body.purchase_order_id);
       if (!['approved', 'partially_received'].includes(po.status)) {

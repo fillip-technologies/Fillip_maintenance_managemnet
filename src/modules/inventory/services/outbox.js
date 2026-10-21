@@ -107,10 +107,18 @@ export async function deliverPending({ limit = 20 } = {}) {
 /** Polls every `intervalMs` while the process runs (OUTBOX_WORKER_ENABLED). */
 export function startOutboxWorker({ intervalMs = 15_000 } = {}) {
   let running = false;
+  let lastNoticeDay = null;
   const timer = setInterval(async () => {
     if (running) return;
     running = true;
     try {
+      // Once a day: warranty expiry notices become outbox rows like any other.
+      const today = new Date().toISOString().slice(0, 10);
+      if (lastNoticeDay !== today) {
+        const { queueWarrantyNotices } = await import('./warrantyNotices.js');
+        await queueWarrantyNotices();
+        lastNoticeDay = today;
+      }
       await deliverPending();
     } catch (err) {
       logger.error({ err }, 'Outbox worker round failed');

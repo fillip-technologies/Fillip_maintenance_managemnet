@@ -1,3 +1,4 @@
+import { withTx } from '../db.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma.js';
@@ -151,7 +152,7 @@ organizationRouter.post(
   requirePermission(P.SETUP_MANAGE),
   validate(z.object({ body: customerBody })),
   handle(async (req, res) => {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await withTx(async (tx) => {
       const c = await tx.company.create({ data: { organizationId: orgId(), ...customerData(req.input.body) } });
       await tx.stockLocation.create({ data: { organizationId: orgId(), code: `CS-${shortId(c.id)}`, name: `${c.name} store`, locationType: 'company_store', companyId: c.id } });
       return c;
@@ -196,7 +197,7 @@ organizationRouter.post(
   handle(async (req, res) => {
     const customer = await prisma.company.findFirst({ where: { AND: [req.access.customerWhere(), { id: req.input.body.customer_id }] } });
     if (!customer) throw notFound('customer');
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await withTx(async (tx) => {
       const s = await tx.client.create({ data: { organizationId: orgId(), ...siteData(req.input.body) }, include: { company: { select: { name: true } } } });
       await tx.stockLocation.create({ data: { organizationId: orgId(), code: `SS-${shortId(s.id)}`, name: `${s.name} site store`, locationType: 'client_store', companyId: s.companyId, clientId: s.id } });
       return s;

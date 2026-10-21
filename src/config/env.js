@@ -105,6 +105,11 @@ const envSchema = z.object({
   FBOS_IDENTITY_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   // Seconds an Identity actor answer is reused, like the legacy authenticate cache.
   FBOS_ACTOR_CACHE_SECONDS: z.coerce.number().int().nonnegative().default(30),
+  // Open question 12: hours to resolve an issue, per priority (sets issues.sla_due_at).
+  INVENTORY_SLA_HOURS: z
+    .string()
+    .default('critical:4,high:24,medium:72,low:168')
+    .transform((s) => Object.fromEntries(s.split(',').map((pair) => pair.split(':')).map(([k, v]) => [k.trim(), Number(v)]))),
   // Run the outbox worker inside this process (off in tests and one-off scripts).
   OUTBOX_WORKER_ENABLED: z
     .enum(['true', 'false'])

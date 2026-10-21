@@ -1,3 +1,4 @@
+import { withTx } from '../db.js';
 import { prisma } from '../../../lib/prisma.js';
 import { env } from '../../../config/env.js';
 import { changeDeviceState } from '../domain/deviceState.js';
@@ -140,11 +141,11 @@ export async function createTransfer(access, actor, body, { tx: outer } = {}) {
     }
     return tx.stockTransfer.findUnique({ where: { id: transfer.id }, include: transferInclude });
   };
-  return outer ? run(outer) : prisma.$transaction(run, { timeout: 60_000 });
+  return outer ? run(outer) : withTx(run, { timeout: 60_000 });
 }
 
 export async function approveTransfer(access, actor, id, version) {
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const t = await transferInScope(tx, access, id);
     assertVersion(t, version);
     if (t.status !== 'draft') throw conflict('INVALID_TRANSFER_STATUS', `A ${t.status} transfer cannot be approved`, { status: t.status });
@@ -194,7 +195,7 @@ export async function dispatchTransfer(access, actor, id, version, body = {}, { 
     });
     return updated;
   };
-  return outer ? run(outer) : prisma.$transaction(run, { timeout: 60_000 });
+  return outer ? run(outer) : withTx(run, { timeout: 60_000 });
 }
 
 /**
@@ -267,11 +268,11 @@ export async function receiveTransfer(access, actor, id, version, body = {}, { t
     }
     return updated;
   };
-  return outer ? run(outer) : prisma.$transaction(run, { timeout: 60_000 });
+  return outer ? run(outer) : withTx(run, { timeout: 60_000 });
 }
 
 export async function cancelTransfer(access, actor, id, version, reason) {
-  return prisma.$transaction(async (tx) => {
+  return withTx(async (tx) => {
     const t = await transferInScope(tx, access, id);
     assertVersion(t, version);
     if (!['draft', 'approved'].includes(t.status)) throw conflict('INVALID_TRANSFER_STATUS', `A ${t.status} transfer cannot be cancelled`, { status: t.status });

@@ -1,3 +1,4 @@
+import { withTx } from '../db.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma.js';
@@ -162,7 +163,7 @@ catalogRouter.post(
   requirePermission(P.CATALOG_WRITE),
   validate(z.object({ body: vendorBody })),
   handle(async (req, res) => {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await withTx(async (tx) => {
       const vendor = await tx.vendor.create({ data: { organizationId: env.FBOS_ORGANIZATION_ID ?? null, ...vendorData(req.input.body) } });
       await tx.stockLocation.create({
         data: {

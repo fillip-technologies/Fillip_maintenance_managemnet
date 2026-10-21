@@ -6,6 +6,7 @@ import { reconcileDeviceStatus } from '../devices/device.service.js';
 import { zoneService } from '../zones/zone.service.js';
 import { emitIssueEvent, DOMAIN_EVENT } from '../../realtime/events.js';
 import { issueScopeWhere, combine, deviceInScope, assertInScope } from '../../authz/scope.js';
+import { enrichNewIssue } from '../inventory/domain/issues.js';
 
 // Multi-step writes make several sequential round trips; give them headroom
 // beyond Prisma's 5s default so remote-DB latency doesn't expire the tx.
@@ -157,6 +158,7 @@ export const issueService = {
           longitude: longitude != null ? longitude : null,
         },
       });
+      await enrichNewIssue(tx, created.id, { raisedVia: user?.role === 'technician' ? 'mobile' : 'manual' });
       await reconcileDeviceStatus(tx, deviceId);
       return created;
     }, TX_OPTS);
@@ -320,6 +322,7 @@ export const issueService = {
         await tx.issueStatusHistory.create({
           data: { issueId: issue.id, fromStatus: null, toStatus: 'open', changedByUserId: raiserId },
         });
+        await enrichNewIssue(tx, issue.id, { raisedVia: user?.role === 'technician' ? 'mobile' : 'manual' });
         await reconcileDeviceStatus(tx, deviceId);
         created.push(issue);
       }
@@ -343,3 +346,6 @@ function isTransitionAllowed(from, to) {
     return false;
   }
 }
+
+// The include the realtime and push layers expect, for issues changed through the v2 API.
+export { detail as legacyIssueDetail };

@@ -15,15 +15,16 @@ export const PLACELESS_STATES = ['in_transit', 'lost', 'disposed'];
 
 /** Allowed moves (docs/03 §1). `lost` is reachable from any state. */
 export const TRANSITIONS = {
-  in_platform_stock: ['reserved', 'in_transit'],
-  reserved: ['in_platform_stock', 'in_company_stock', 'in_client_stock', 'in_transit'],
+  in_platform_stock: ['reserved', 'in_transit', 'retired'],
+  // A spare reserved for a swap at its own site goes straight into the zone.
+  reserved: ['in_platform_stock', 'in_company_stock', 'in_client_stock', 'in_transit', 'installed'],
   in_transit: ['in_platform_stock', 'in_company_stock', 'in_client_stock', 'under_repair', 'at_vendor_rma', 'reserved'],
-  in_company_stock: ['in_transit', 'in_client_stock', 'reserved'],
-  in_client_stock: ['installed', 'in_transit', 'reserved'],
+  in_company_stock: ['in_transit', 'in_client_stock', 'reserved', 'retired'],
+  in_client_stock: ['installed', 'in_transit', 'reserved', 'retired'],
   installed: ['under_maintenance', 'faulty', 'in_client_stock', 'pending_replacement'],
   under_maintenance: ['installed', 'faulty'],
   faulty: ['pending_replacement', 'under_repair', 'retired', 'installed', 'in_client_stock', 'in_transit'],
-  pending_replacement: ['under_repair', 'at_vendor_rma', 'retired', 'in_client_stock', 'in_transit'],
+  pending_replacement: ['faulty', 'under_repair', 'at_vendor_rma', 'retired', 'in_client_stock', 'in_transit'],
   under_repair: ['in_client_stock', 'in_company_stock', 'in_platform_stock', 'retired', 'in_transit'],
   at_vendor_rma: ['in_client_stock', 'in_company_stock', 'in_platform_stock', 'retired', 'in_transit'],
   retired: ['disposed'],
@@ -77,8 +78,11 @@ export function lifecycleFromLegacy({ status, zoneId, current, hasClient }) {
     return current === 'disposed' || current === 'lost' ? current : 'retired';
   }
   if (zoneId) {
+    // A fault confirmed through the v2 API stays while the legacy status only says
+    // someone is working on it (reconcileDeviceStatus derives that from open issues).
+    if (['faulty', 'pending_replacement'].includes(current) && ['under_maintenance', 'faulty'].includes(status)) return current;
     if (status === 'under_maintenance') return 'under_maintenance';
-    if (status === 'faulty') return current === 'pending_replacement' ? current : 'faulty';
+    if (status === 'faulty') return 'faulty';
     return 'installed'; // active, provisioned with a zone
   }
   // No zone: in some store, or away (transit, repair, RMA) under the v2 API.
