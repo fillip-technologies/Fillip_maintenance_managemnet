@@ -105,3 +105,34 @@ export async function sendToTokens(tokens, { title, body, data }) {
 
   return { sent: res.successCount, invalidTokens };
 }
+
+/**
+ * Diagnostic: send one test push and return the raw per-token FCM outcome.
+ * Never prunes tokens; used by POST /auth/test-push.
+ */
+export async function diagnosticSend(tokens) {
+  const enabled = Boolean(initPush());
+  const base = {
+    pushEnabled: enabled,
+    initError: resolvedConfigError && resolvedConfigError.message !== 'unconfigured'
+      ? resolvedConfigError.message
+      : resolvedConfigError ? 'no Firebase credentials configured' : null,
+    tokenCount: tokens.length,
+  };
+  if (!enabled || tokens.length === 0) return { ...base, results: [] };
+  const res = await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: { title: 'Fixly test', body: 'If you see this, push works.' },
+    android: { priority: 'high', notification: { channelId: 'fixly_high' } },
+  });
+  return {
+    ...base,
+    successCount: res.successCount,
+    results: res.responses.map((r, i) => ({
+      token: tokens[i].slice(0, 12) + '…',
+      success: r.success,
+      code: r.error?.code ?? null,
+      message: r.error?.message ?? null,
+    })),
+  };
+}

@@ -142,6 +142,12 @@ export const authService = {
     });
   },
 
+  async testPush(userId) {
+    const { diagnosticSend } = await import('../../push/provider.js');
+    const rows = await prisma.deviceToken.findMany({ where: { userId }, select: { token: true } });
+    return diagnosticSend(rows.map((r) => r.token));
+  },
+
   async saveDeviceToken(userId, { token, platform }) {
     await prisma.deviceToken.upsert({
       where: { token },

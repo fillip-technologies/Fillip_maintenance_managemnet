@@ -16,6 +16,9 @@ export const authController = {
   deviceToken: asyncHandler(async (req, res) => {
     sendSuccess(res, await authService.saveDeviceToken(req.user.id, req.body));
   }),
+  testPush: asyncHandler(async (req, res) => {
+    sendSuccess(res, await authService.testPush(req.user.id));
+  }),
   me: asyncHandler(async (req, res) => {
     sendSuccess(res, req.user);
   }),

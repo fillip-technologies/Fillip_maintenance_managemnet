@@ -14,3 +14,4 @@ authRouter.post('/logout', validate(logoutSchema), authController.logout);
 // Authenticated.
 authRouter.get('/me', authenticate, authController.me);
 authRouter.post('/device-token', authenticate, validate(deviceTokenSchema), authController.deviceToken);
+authRouter.post('/test-push', authenticate, authController.testPush);
