@@ -4,7 +4,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { env } from '../../../config/env.js';
 import { requirePermission } from '../auth/middleware.js';
 import { handle, validate } from '../http/request.js';
-import { iso, day } from '../http/serialize.js';
+import { iso, day, money } from '../http/serialize.js';
 import { P } from '../permissions.js';
 
 /** The design doc §10 queries as reports (operator, inventory.report.read). */
@@ -101,5 +101,143 @@ reportsRouter.get(
       orderBy: { dispatchedAt: 'asc' },
     });
     res.json({ data: rows.map((t) => ({ id: t.id, transfer_number: t.transferNumber, transfer_type: t.transferType, from: t.fromLocation.name, to: t.toLocation.name, devices: t._count.items, dispatched_at: iso(t.dispatchedAt), tracking_number: t.trackingNumber })) });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// The CEO Command Center's procurement, hardware and field cards (FBOS gateway).
+// Totals only. A PO counts by its order date (its created date when it has none);
+// committed spend leaves out POs not yet approved and cancelled ones.
+
+const COMMITTED_PO = ['approved', 'partially_received', 'received'];
+const OPEN_REPAIR_EXCLUDED = ['closed', 'cancelled'];
+const MAX_PERIOD_DAYS = 3 * 366;
+const DAY_MS = 86_400_000;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+
+/** The same number of days immediately before [from, to] (both inclusive). */
+export function previousPeriod(from, to) {
+  const days = Math.round((to - from) / DAY_MS) + 1;
+  return { from: new Date(from.getTime() - days * DAY_MS), to: new Date(from.getTime() - DAY_MS) };
+}
+
+const orderedIn = (from, to) => ({
+  OR: [
+    { orderDate: { gte: from, lte: to } },
+    { orderDate: null, createdAt: { gte: from, lt: new Date(to.getTime() + DAY_MS) } },
+  ],
+});
+
+async function committedSpend(from, to) {
+  const totals = await prisma.purchaseOrder.aggregate({
+    where: { ...org(), status: { in: COMMITTED_PO }, ...orderedIn(from, to) },
+    _sum: { totalAmount: true },
+    _count: { _all: true },
+  });
+  return { amount: Number(totals._sum.totalAmount ?? 0), count: totals._count._all };
+}
+
+async function mainCurrency() {
+  const groups = await prisma.purchaseOrder.groupBy({ by: ['currency'], where: org(), _count: { _all: true } });
+  if (!groups.length) return { currency: 'INR', mixed: false };
+  const top = groups.reduce((a, b) => (b._count._all > a._count._all ? b : a));
+  return { currency: top.currency || 'INR', mixed: groups.length > 1 };
+}
+
+/** Committed PO lines by their model's product category, largest first. */
+async function spendByCategory(from, to) {
+  const lines = await prisma.purchaseOrderItem.groupBy({
+    by: ['deviceModelId'],
+    where: { purchaseOrder: { ...org(), status: { in: COMMITTED_PO }, ...orderedIn(from, to) } },
+    _sum: { lineTotal: true },
+  });
+  const models = await prisma.deviceModel.findMany({
+    where: { id: { in: lines.map((l) => l.deviceModelId) } },
+    select: { id: true, category: { select: { name: true } } },
+  });
+  const categoryOf = new Map(models.map((m) => [m.id, m.category?.name ?? null]));
+  const totals = new Map();
+  for (const line of lines) {
+    const key = categoryOf.get(line.deviceModelId) ?? 'Uncategorized';
+    totals.set(key, (totals.get(key) ?? 0) + Number(line._sum.lineTotal ?? 0));
+  }
+  return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+reportsRouter.get(
+  '/reports/summary',
+  requirePermission(P.REPORT_READ),
+  validate(
+    z.object({
+      query: z
+        .object({ from: isoDate, to: isoDate })
+        .refine((q) => q.to >= q.from, { message: "'to' must be on or after 'from'", path: ['to'] })
+        .refine((q) => (new Date(q.to) - new Date(q.from)) / DAY_MS < MAX_PERIOD_DAYS, {
+          message: `the period may cover at most ${MAX_PERIOD_DAYS} days`,
+          path: ['from'],
+        }),
+    }),
+  ),
+  handle(async (req, res) => {
+    const from = new Date(`${req.input.query.from}T00:00:00.000Z`);
+    const to = new Date(`${req.input.query.to}T00:00:00.000Z`);
+    const previous = previousPeriod(from, to);
+    const toEnd = new Date(to.getTime() + DAY_MS);
+
+    const [{ currency, mixed }, spend, spendPrevious, byStatus, byCategory, receipts, installs, technicians, available, openRepairs] =
+      await Promise.all([
+        mainCurrency(),
+        committedSpend(from, to),
+        committedSpend(previous.from, previous.to),
+        prisma.purchaseOrder.groupBy({
+          by: ['status'],
+          where: { ...org(), ...orderedIn(from, to) },
+          _sum: { totalAmount: true },
+          _count: { _all: true },
+        }),
+        spendByCategory(from, to),
+        prisma.goodsReceipt.groupBy({
+          by: ['status'],
+          where: { ...org(), receivedAt: { gte: from, lt: toEnd } },
+          _count: { _all: true },
+        }),
+        prisma.deviceInstallation.groupBy({
+          by: ['installationType'],
+          where: { ...org(), installedAt: { gte: from, lt: toEnd } },
+          _count: { _all: true },
+        }),
+        // Technicians are the operator's field staff; they carry no organization of their own.
+        prisma.technician.count(),
+        prisma.technician.count({ where: { isAvailable: true } }),
+        prisma.repairOrder.count({ where: { ...org(), status: { notIn: OPEN_REPAIR_EXCLUDED } } }),
+      ]);
+
+    res.json({
+      currency,
+      mixed_currencies: mixed,
+      period: { from_date: day(from), to_date: day(to) },
+      previous_period: { from_date: day(previous.from), to_date: day(previous.to) },
+      purchase_orders: {
+        committed: money(spend.amount, currency),
+        committed_count: spend.count,
+        committed_previous: money(spendPrevious.amount, currency),
+        by_status: byStatus
+          .map((g) => ({ status: g.status, count: g._count._all, total: money(Number(g._sum.totalAmount ?? 0), currency) }))
+          .sort((a, b) => b.count - a.count),
+        by_category: byCategory.map(([category, amount]) => ({ category, amount: money(amount, currency) })),
+      },
+      goods_receipts: {
+        total: receipts.reduce((sum, g) => sum + g._count._all, 0),
+        by_status: receipts.map((g) => ({ status: g.status, count: g._count._all })),
+      },
+      installations: {
+        total: installs.reduce((sum, g) => sum + g._count._all, 0),
+        new_installs: installs.find((g) => g.installationType === 'new_install')?._count._all ?? 0,
+        by_type: installs.map((g) => ({ installation_type: g.installationType, count: g._count._all })),
+      },
+      technicians: { total: technicians, available },
+      open_repairs: openRepairs,
+    });
   }),
 );

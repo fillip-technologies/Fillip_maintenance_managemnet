@@ -137,6 +137,12 @@ t('8. reports are for operator staff only', async () => {
     ok(await kit.api(`/reports/${path}`, 'ops'));
   }
   assert.equal((await kit.api('/reports/stock-on-hand', 'site-a')).status, 403);
+  const summary = await kit.api('/reports/summary?from=2020-01-01&to=2022-12-31', 'ops');
+  ok(summary);
+  assert.equal(summary.body.technicians.total >= summary.body.technicians.available, true);
+  assert.ok(summary.body.purchase_orders.committed.amount, 'committed spend is money');
+  assert.equal((await kit.api('/reports/summary?from=2026-11-30&to=2026-11-01', 'ops')).status, 422);
+  assert.equal((await kit.api('/reports/summary?from=2026-11-01&to=2026-11-30', 'site-a')).status, 403);
 });
 
 t('9. warranty notices go out once per step', async () => {
