@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { env } from '../../../config/env.js';
-import { authenticateActor, requireInternalCaller } from '../auth/middleware.js';
+import { authenticateActor, requireInternalCaller, requireServiceCaller } from '../auth/middleware.js';
 import { accessFor } from '../auth/access.js';
 import { handle, validate } from '../http/request.js';
 import { InventoryError, notFound } from '../http/errors.js';
 import { SUBJECTS } from '../subjects.js';
+import { procurementSummary, summaryPeriod } from './reports.js';
 
 /**
  * Service-to-service routes. FBOS Documents keeps no access rules of its own:
@@ -38,5 +39,23 @@ internalRouter.get(
     const record = await subject.find(access, req.params.id);
     if (!record) throw notFound(subject.label);
     res.json({ organization_id: env.FBOS_ORGANIZATION_ID ?? req.actor.organizationId, label: subject.labelOf(record) });
+  }),
+);
+
+/**
+ * The CEO summary (`/reports/summary`) for the gateway's nightly snapshots, which run with no
+ * user signed in. This service holds one organization's inventory: any other is told it is
+ * not served, as `/reports/summary` tells its callers.
+ */
+internalRouter.get(
+  '/internal/reports/summary',
+  requireServiceCaller,
+  validate(z.object({ query: summaryPeriod.and(z.object({ organization_id: z.string().uuid() })) })),
+  handle(async (req, res) => {
+    const served = env.FBOS_ORGANIZATION_ID;
+    if (served && req.input.query.organization_id !== served) {
+      throw new InventoryError(404, 'ORGANIZATION_NOT_SERVED', 'This organization has no inventory here');
+    }
+    res.json(await procurementSummary(req.input.query.from, req.input.query.to));
   }),
 );

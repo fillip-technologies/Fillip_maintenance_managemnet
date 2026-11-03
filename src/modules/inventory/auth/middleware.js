@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { env } from '../../../config/env.js';
 import { InventoryError } from '../http/errors.js';
 import { resolveActor } from './identityClient.js';
@@ -58,3 +59,25 @@ export function requireInternalCaller(req, _res, next) {
   return next();
 }
 requireInternalCaller.isPermissionGuard = true;
+
+/**
+ * Whether a service-to-service call with no user behind it may go ahead. Unlike
+ * requireInternalCaller (whose routes still check the forwarded user), nothing else guards
+ * these routes, so a missing FBOS_INTERNAL_TOKEN refuses everyone outside development.
+ */
+export function serviceTokenAccepted(expected, given, nodeEnv) {
+  if (!expected) return nodeEnv === 'development';
+  if (typeof given !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Internal routes no user is behind (the gateway's nightly snapshots): the shared token, always. */
+export function requireServiceCaller(req, _res, next) {
+  if (!serviceTokenAccepted(env.FBOS_INTERNAL_TOKEN, req.get('x-fbos-internal-token'), env.NODE_ENV)) {
+    return next(new InventoryError(403, 'INTERNAL_CALLER_REQUIRED', 'Only FBOS services may call this'));
+  }
+  return next();
+}
+requireServiceCaller.isPermissionGuard = true;

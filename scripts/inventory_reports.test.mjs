@@ -16,3 +16,14 @@ test('a one-day period is compared with the day before', () => {
   const p = previousPeriod(new Date('2026-11-03T00:00:00Z'), new Date('2026-11-03T00:00:00Z'));
   assert.deepEqual([day(p.from), day(p.to)], ['2026-11-02', '2026-11-02']);
 });
+
+const { serviceTokenAccepted } = await import('../src/modules/inventory/auth/middleware.js');
+
+test('the internal summary needs the service token; with none set only development lets calls through', () => {
+  assert.equal(serviceTokenAccepted('s3cret', 's3cret', 'production'), true);
+  assert.equal(serviceTokenAccepted('s3cret', 'wrong!', 'production'), false);
+  assert.equal(serviceTokenAccepted('s3cret', undefined, 'development'), false);
+  assert.equal(serviceTokenAccepted('', undefined, 'production'), false);
+  assert.equal(serviceTokenAccepted('', undefined, 'test'), false);
+  assert.equal(serviceTokenAccepted('', undefined, 'development'), true);
+});

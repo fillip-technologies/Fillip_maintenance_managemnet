@@ -39,3 +39,8 @@ test('the check notices a route without a guard', async () => {
   r.get('/leaky', (_req, res) => res.json({}));
   assert.deepEqual(routesOf(r).filter((x) => !x.guarded).map((x) => x.path), ['/leaky']);
 });
+
+test('the internal CEO summary is guarded by the service token', () => {
+  const route = routesOf(inventoryRouter()).find((r) => r.path === '/internal/reports/summary');
+  assert.deepEqual(route, { method: 'GET', path: '/internal/reports/summary', guarded: true });
+});
