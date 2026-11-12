@@ -27,3 +27,27 @@ test('the internal summary needs the service token; with none set only developme
   assert.equal(serviceTokenAccepted('', undefined, 'test'), false);
   assert.equal(serviceTokenAccepted('', undefined, 'development'), true);
 });
+
+const { countVisits, todayWindow } = await import('../src/modules/inventory/routes/reports.js');
+
+test("today's visits: a scheduled visit past its time is escalated, cancelled ones are left out", () => {
+  const now = new Date('2026-11-12T12:00:00');
+  const at = (time) => new Date(`2026-11-12T${time}`);
+  const counts = countVisits(
+    [
+      { status: 'completed', scheduledAt: at('09:00:00') },
+      { status: 'in_progress', scheduledAt: at('10:00:00') },
+      { status: 'scheduled', scheduledAt: at('11:00:00') },
+      { status: 'scheduled', scheduledAt: at('15:00:00') },
+      { status: 'cancelled', scheduledAt: at('08:00:00') },
+    ],
+    now,
+  );
+  assert.deepEqual(counts, { completed: 1, in_progress: 1, pending: 1, escalated: 1 });
+});
+
+test("today is the server's own day, midnight to midnight", () => {
+  const { start, end } = todayWindow(new Date('2026-11-12T18:30:00'));
+  assert.equal(start.getTime(), new Date('2026-11-12T00:00:00').getTime());
+  assert.equal(end.getTime(), new Date('2026-11-13T00:00:00').getTime());
+});

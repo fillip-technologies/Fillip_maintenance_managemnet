@@ -165,6 +165,46 @@ async function spendByCategory(from, to) {
   return [...totals.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/** Today on the server's clock: [its midnight, the next midnight). */
+export function todayWindow(now = new Date()) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+/**
+ * Today's field visits as the CEO sees them (CEO design gaps plan, decision D2): a visit still
+ * `scheduled` after its time is escalated (stuck); one not due yet is pending. Cancelled visits
+ * are left out.
+ */
+export function countVisits(visits, now = new Date()) {
+  const counts = { completed: 0, in_progress: 0, pending: 0, escalated: 0 };
+  for (const visit of visits) {
+    if (visit.status === 'completed') counts.completed += 1;
+    else if (visit.status === 'in_progress') counts.in_progress += 1;
+    else if (visit.status === 'scheduled') counts[visit.scheduledAt < now ? 'escalated' : 'pending'] += 1;
+  }
+  return counts;
+}
+
+async function visitsToday(now = new Date()) {
+  const { start, end } = todayWindow(now);
+  const visits = await prisma.serviceVisit.findMany({
+    where: { ...org(), status: { not: 'cancelled' }, scheduledAt: { gte: start, lt: end } },
+    select: { status: true, scheduledAt: true },
+  });
+  return countVisits(visits, now);
+}
+
+/** Each technician's FBOS user, for the gateway to ask People who is in or on leave. */
+async function technicianUsers() {
+  const technicians = await prisma.technician.findMany({ select: { user: { select: { fbosUserId: true } } } });
+  const linked = technicians.map((t) => t.user?.fbosUserId).filter(Boolean);
+  return { fbos_user_ids: linked, unlinked: technicians.length - linked.length };
+}
+
 /** The summary's period, `from` and `to` as YYYY-MM-DD (the public and the internal route share it). */
 export const summaryPeriod = z
   .object({ from: isoDate, to: isoDate })
@@ -193,7 +233,10 @@ export async function procurementSummary(fromDay, toDay) {
   const previous = previousPeriod(from, to);
   const toEnd = new Date(to.getTime() + DAY_MS);
 
-  const [{ currency, mixed }, spend, spendPrevious, byStatus, byCategory, receipts, installs, technicians, available, openRepairs] =
+  const [
+    { currency, mixed }, spend, spendPrevious, byStatus, byCategory, receipts, installs, technicians, available, openRepairs,
+    visits, technicianLinks,
+  ] =
     await Promise.all([
       mainCurrency(),
       committedSpend(from, to),
@@ -219,6 +262,8 @@ export async function procurementSummary(fromDay, toDay) {
       prisma.technician.count(),
       prisma.technician.count({ where: { isAvailable: true } }),
       prisma.repairOrder.count({ where: { ...org(), status: { notIn: OPEN_REPAIR_EXCLUDED } } }),
+      visitsToday(),
+      technicianUsers(),
     ]);
 
   return {
@@ -244,7 +289,9 @@ export async function procurementSummary(fromDay, toDay) {
       new_installs: installs.find((g) => g.installationType === 'new_install')?._count._all ?? 0,
       by_type: installs.map((g) => ({ installation_type: g.installationType, count: g._count._all })),
     },
-    technicians: { total: technicians, available },
+    technicians: { total: technicians, available, ...technicianLinks },
     open_repairs: openRepairs,
+    // Today, not the period: what the field team is doing now.
+    visits_today: visits,
   };
 }
